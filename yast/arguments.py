@@ -103,7 +103,7 @@ class SpladeTrainingArguments(TrainingArguments):
     - {"cross_entropy": {"weight": 1.0}, "mse": {"weight": 0.5}}  # Multiple losses with weights
     - {"cross_entropy": {"weight": 1.0, "loss_kwargs": {"reduction": "mean"}}}  # With parameters
     """
-        }
+        },
     )
     noise_tokens: None | str | list[str] = field(
         default=None,
