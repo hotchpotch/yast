@@ -1,3 +1,5 @@
+import logging
+
 import joblib
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
@@ -5,6 +7,8 @@ from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from ..arguments import DataArguments
 from ..data import DatasetForSpladeTraining
+
+logger = logging.getLogger(__name__)
 
 MMARCO_DATASET = "unicamp-dl/mmarco"
 HADR_NEGATIVE_SCORE_DS = "hotchpotch/mmarco-hard-negatives-reranker-score"
@@ -44,6 +48,8 @@ class MMarcoHardNegatives(DatasetForSpladeTraining):
         args: DataArguments,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     ):
+        logger.info("Initializing MMarcoHardNegatives dataset")
+
         self.query_max_len = args.dataset_options.get("query_max_len", 256)
         self.doc_max_len = args.dataset_options.get("doc_max_len", 1024)
         train_data = args.train_data
@@ -60,27 +66,32 @@ class MMarcoHardNegatives(DatasetForSpladeTraining):
 
         mapping = f"mappings/{lang}_joblib.pkl.gz"
 
+        logger.info(f"Downloading mapping file from Hugging Face Hub: {mapping}")
         mapping_file = hf_hub_download(
             repo_type="dataset", repo_id=HADR_NEGATIVE_SCORE_DS, filename=mapping
         )
 
+        logger.info(f"Loading mapping file: {mapping_file}")
         index_mapping_dict = joblib.load(mapping_file)
 
         self.query_id_dict = index_mapping_dict["query_id_dict"]
         self.collection_id_dict = index_mapping_dict["collection_id_dict"]
 
+        logger.info(f"Loading queries dataset for language: {lang}")
         self.queries_ds = load_dataset(
             MMARCO_DATASET,
             "queries-" + lang,
             split="train",
             trust_remote_code=True,
         )
+        logger.info(f"Loading collection dataset for language: {lang}")
         self.collection_ds = load_dataset(
             MMARCO_DATASET,
             "collection-" + lang,
             split="collection",
             trust_remote_code=True,
         )
+        logger.info(f"Loading hard negatives dataset subset: {subset}")
         ds = load_dataset(HADR_NEGATIVE_SCORE_DS, subset, split="train")
         ds = ds.map(
             _map_filter_score,
@@ -90,7 +101,7 @@ class MMarcoHardNegatives(DatasetForSpladeTraining):
         ds = ds.filter(
             _filter_score, num_proc=11, fn_kwargs={"net_filter_count": net_filter_count}
         )  # type: ignore
-        # print(f"filtered dataset size: {len(ds)}")
+        logger.info(f"Filtered dataset size: {len(ds)}")
 
         super().__init__(args, tokenizer, ds)  # type: ignore
 

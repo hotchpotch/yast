@@ -56,10 +56,11 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
             if isinstance(train_data, list):
                 datasets = []
                 for target in train_data:
-                    print(f"Loading {target}")
+                    logger.info(f"Loading {target}")
                     datasets.append(self.load_dataset(target))
                 self.dataset = concatenate_datasets(datasets)
             else:
+                logger.info(f"Loading {train_data}")
                 self.dataset = self.load_dataset(train_data)
         else:
             self.dataset = dataset
@@ -72,25 +73,27 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
 
     def load_dataset(self, target_name: str) -> Dataset:
         if target_name.endswith(".jsonl") or target_name.endswith(".json"):
+            logger.info(f"Loading JSON dataset from {target_name}")
             return load_dataset("json", data_files=target_name)["train"]  # type: ignore
         elif os.path.isdir(target_name):
             datasets = []
             target_files = os.listdir(target_name)
             if any([f.endswith(".arrow") for f in target_files]):
                 # has arrow files
-                print(f"Loading {target_name}")
+                logger.info(f"Loading dataset from directory {target_name}")
                 target_ds = load_from_disk(target_name)
-                print(f"Loaded {target_name}: {len(target_ds)}")
-                datasets.append(load_from_disk(target_name))
+                logger.info(f"Loaded {target_name}: {len(target_ds)} examples")
+                datasets.append(target_ds)
             else:
                 for target in target_files:
-                    print(f"Loading {target}")
-                    target = os.path.join(target_name, target)
-                    target_ds = self.load_dataset(target)
-                    print(f"Loaded {target}: {len(target_ds)}")
+                    full_path = os.path.join(target_name, target)
+                    logger.info(f"Loading {full_path}")
+                    target_ds = self.load_dataset(full_path)
+                    logger.info(f"Loaded {full_path}: {len(target_ds)} examples")
                     datasets.append(target_ds)
             return concatenate_datasets(datasets)
         else:
+            logger.info(f"Loading dataset {target_name} with split='train'")
             return load_dataset(target_name, split="train")  # type: ignore
 
     @property

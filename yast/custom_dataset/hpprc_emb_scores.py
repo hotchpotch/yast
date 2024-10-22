@@ -1,3 +1,4 @@
+import logging
 from functools import cache
 from typing import cast
 
@@ -9,30 +10,44 @@ from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 from ..arguments import DataArguments
 from ..data import DatasetForSpladeTraining
 
+logger = logging.getLogger(__name__)
+
 HPPRC_EMB_DS = "hpprc/emb"
 SCORE_DS = "hotchpotch/hpprc_emb-scores"
 
 
 @cache
 def get_dataset_subsets(dataset_name):
+    logger.info(f"Fetching dataset subsets for dataset: {dataset_name}")
     api = HfApi()
     dataset_info = api.dataset_info(dataset_name)
 
-    if "configs" in dataset_info.card_data:  # type: ignore
-        return [config["config_name"] for config in dataset_info.card_data["configs"]]  # type: ignore
-    elif "dataset_info" in dataset_info.card_data:  # type: ignore
-        return [info["config_name"] for info in dataset_info.card_data["dataset_info"]]  # type: ignore
+    if card_data := dataset_info.card_data:
+        if "configs" in card_data:
+            subsets = [config["config_name"] for config in card_data["configs"]]
+            logger.info(f"Found configs: {subsets}")
+            return subsets
+        elif "dataset_info" in card_data:
+            subsets = [info["config_name"] for info in card_data["dataset_info"]]
+            logger.info(f"Found dataset_info configs: {subsets}")
+            return subsets
     else:
+        logger.warning(f"No subsets found for dataset: {dataset_name}")
         return []
 
 
 def get_datasets(target_name: str):
+    logger.info(f"Retrieving datasets for target name: {target_name}")
     subsets = get_dataset_subsets(SCORE_DS)
-    target_subsets = [subset for subset in subsets if subset.startswith(target_name)]
+    target_subsets = [subset for subset in subsets if subset.startswith(target_name)]  # type: ignore
     if not target_subsets:
+        logger.error(f"Subset not found: {target_name}")
         raise ValueError(f"Subset not found: {target_name}")
     target_subset = target_subsets[0]
     target_base_name, revision = target_subset.rsplit("-dataset__", 1)
+    logger.info(
+        f"Loading score dataset: {SCORE_DS}, subset: {target_subset}, revision: {revision}"
+    )
     score_ds = load_dataset(
         SCORE_DS,
         name=target_subset,
@@ -42,6 +57,9 @@ def get_datasets(target_name: str):
         collection_name = "qa-collection"
     else:
         collection_name = f"{target_base_name}-collection"
+    logger.info(
+        f"Loading embedding dataset: {HPPRC_EMB_DS}, collection: {collection_name}, revision: {revision}"
+    )
     hpprc_emb_ds = load_dataset(
         HPPRC_EMB_DS,
         name=collection_name,
@@ -83,6 +101,9 @@ def map_data(
                 scores_key_values.append(np.array(scores))
         if len(scores_key_values) > 0:
             if len(scores_key_values) != len(target_score_keys):
+                logger.error(
+                    f"len(scores_key_values) != len(target_score_keys): {len(scores_key_values)} != {len(target_score_keys)}"
+                )
                 raise ValueError(
                     f"len(scores_key_values) != len(target_score_keys): {len(scores_key_values)} != {len(target_score_keys)}"
                 )
@@ -125,10 +146,11 @@ def map_data(
         elif "neg_ids" in id_key and id_key not in result_neg_ids and id_key:
             result_neg_ids += filtered_target_ids_dict[id_key]
             result_neg_ids_score += target_score_dict[id_key]
-    # print("pos_ids", result_pos_ids)
-    # print("neg_ids", result_neg_ids)
-    # print("result_pod_ids", result_pos_ids_score)
-    # print("result_neg_ids", result_neg_ids_score)
+    # ログメッセージに置き換え
+    logger.debug(f"pos_ids: {result_pos_ids}")
+    logger.debug(f"neg_ids: {result_neg_ids}")
+    logger.debug(f"result_pos_ids_score: {result_pos_ids_score}")
+    logger.debug(f"result_neg_ids_score: {result_neg_ids_score}")
     return {
         "anc": example["anc"],
         "pos_ids": result_pos_ids,
@@ -155,9 +177,11 @@ class HpprcEmbScoresDataset(DatasetForSpladeTraining):
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
         seed: int = 42,
     ):
+        logger.info("Initializing HpprcEmbScoresDataset")
         train_data = args.train_data
         # train data は list
         if not isinstance(train_data, list):
+            logger.error("train_data must be a list")
             raise ValueError("train_data must be a list")
         dataset_options = args.dataset_options
         self.binarize_label: bool = dataset_options.get("binarize_label", False)
@@ -165,12 +189,14 @@ class HpprcEmbScoresDataset(DatasetForSpladeTraining):
         target_emb_ds = {}
         for target in train_data:
             if not isinstance(target, dict):
+                logger.error("train_data must be a list of dictionaries")
                 raise ValueError("train_data must be a list of dictionaries")
             subset = target["subset"]
-            print("Processing...", subset)
+            logger.info(f"Processing subset: {subset}")
             n = target.get("n", None)
             emb_ds, score_ds = get_datasets(subset)
             score_ds = cast(Dataset, score_ds)
+            logger.info(f"Mapping data for subset: {subset}")
             score_ds = score_ds.map(
                 map_data, num_proc=11, remove_columns=score_ds.column_names
             )  # type: ignore
@@ -178,16 +204,19 @@ class HpprcEmbScoresDataset(DatasetForSpladeTraining):
             aug_factor = target.get("aug_factor", 1.0)
             if aug_factor != 1.0:
                 if n is not None:
-                    print(
-                        "Warning: aug_factor is ignored because n is specified, skip aug_factor args",
-                        subset,
+                    logger.warning(
+                        f"aug_factor is ignored because n is specified, skipping aug_factor args for subset: {subset}"
                     )
                 else:
                     n = int(len(score_ds) * aug_factor)
-                    print(f"Augment dataset: {subset} @{aug_factor}")
+                    logger.info(
+                        f"Augmenting dataset: {subset} with aug_factor: {aug_factor}"
+                    )
             if n is not None:
                 if n > len(score_ds):
-                    print(f"Expand dataset: {subset} orig: {len(score_ds)} => {n}")
+                    logger.info(
+                        f"Expanding dataset: {subset} from {len(score_ds)} to {n}"
+                    )
                     score_ds_expand = []
                     c = n // len(score_ds)
                     r = n % len(score_ds)
@@ -197,22 +226,26 @@ class HpprcEmbScoresDataset(DatasetForSpladeTraining):
                     score_ds = concatenate_datasets(score_ds_expand)
                     assert len(score_ds) == n
                 else:
+                    logger.info(
+                        f"Shuffling and selecting first {n} samples from dataset: {subset}"
+                    )
                     score_ds = score_ds.shuffle(seed=seed).select(range(n))  # type: ignore
             before_filter_len = len(score_ds)
-            score_ds = score_ds.filter(filter_data, num_proc=11)
-            print(
-                "Filtered",
-                subset,
-                before_filter_len,
-                len(score_ds),
-                f"{len(score_ds) / before_filter_len:.2f}",
+            logger.info(
+                f"Filtering dataset: {subset}, original size: {before_filter_len}"
             )
-            subsets = [subset] * len(score_ds)
-            score_ds = score_ds.add_column("subset", subsets)  # type: ignore
+            score_ds = score_ds.filter(filter_data, num_proc=11)
+            after_filter_len = len(score_ds)
+            logger.info(
+                f"Filtered dataset size: {subset}, before: {before_filter_len}, after: {after_filter_len}, ratio: {after_filter_len / before_filter_len:.2f}"
+            )
+            subsets_column = [subset] * len(score_ds)
+            score_ds = score_ds.add_column("subset", subsets_column)  # type: ignore
             all_ds.append(score_ds)
-            print("Loaded", subset, len(score_ds))
+            logger.info(f"Loaded subset: {subset}, size: {len(score_ds)}")
         self.target_emb_ds = target_emb_ds
         ds = concatenate_datasets(all_ds)
+        logger.info(f"Total concatenated dataset size: {len(ds)}")
         super().__init__(args, tokenizer, ds)
 
     def get_text_by_subset(self, subset: str, idx: int, max_len: int = 1024) -> str:
