@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "yast"
+version = "0.1.0"
+description = "YAST - Yet Another SPLADE or Sparse Trainer"
+authors = ["Yuichi Tateno <hotchpotch@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+transformers = ">=4.38.0"
+datasets = ">=3.0.0"
+torch = ">=2.0.0"
+joblib = ">=1.1.0"
+
+
+[tool.poetry.group.dev.dependencies]
+ruff = ">=0.7.0"
+yasem = ">=0.3.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
