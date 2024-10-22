@@ -1,5 +1,11 @@
+"""
+Code adapted from: https://github.com/FlagOpen/FlagEmbedding/blob/master/FlagEmbedding/reranker/data.py
+License: MIT License
+"""
+
 import functools
 import importlib
+import logging
 import os
 import random
 from copy import deepcopy
@@ -17,6 +23,9 @@ from transformers import (
 )
 
 from .arguments import DataArguments
+
+logger = logging.getLogger(__name__)
+
 
 POSITIVE_KEYS = ["pos", "positive", "positives"]
 NEGATIVE_KEYS = ["neg", "negative", "negatives"]
@@ -69,12 +78,17 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
             target_files = os.listdir(target_name)
             if any([f.endswith(".arrow") for f in target_files]):
                 # has arrow files
+                print(f"Loading {target_name}")
+                target_ds = load_from_disk(target_name)
+                print(f"Loaded {target_name}: {len(target_ds)}")
                 datasets.append(load_from_disk(target_name))
             else:
                 for target in target_files:
                     print(f"Loading {target}")
                     target = os.path.join(target_name, target)
-                    datasets.append(self.load_dataset(target))
+                    target_ds = self.load_dataset(target)
+                    print(f"Loaded {target}: {len(target_ds)}")
+                    datasets.append(target_ds)
             return concatenate_datasets(datasets)
         else:
             return load_dataset(target_name, split="train")  # type: ignore
