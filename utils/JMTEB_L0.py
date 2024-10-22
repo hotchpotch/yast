@@ -3,7 +3,7 @@ JMTEB retrieval データセットから、スパース性を測るためクエ�
 """
 
 import argparse
-from typing import Dict, List
+from typing import Dict, List, cast
 
 import datasets
 import numpy as np
@@ -68,6 +68,8 @@ def main():
                 split=JMTEB_QUERY_SPLIT_TARGET,
                 trust_remote_code=True,
             )
+            target_query_ds = cast(datasets.Dataset, target_query_ds)
+
             target_query_ds = target_query_ds.select(
                 range(min(QUERY_MAX_SAMPLE_SIZE, len(target_query_ds)))
             )
@@ -79,6 +81,7 @@ def main():
                 split="corpus",
                 trust_remote_code=True,
             )
+            target_corpus_ds = cast(datasets.Dataset, target_corpus_ds)
             target_corpus_ds = target_corpus_ds.select(
                 range(min(CORPUS_MAX_SAMPLE_SIZE, len(target_corpus_ds)))
             )
@@ -107,8 +110,8 @@ def main():
             print(f"    {target} Docs L0: {docs_L0}")
 
             # Store results
-            result_dict[f"{target}-query"][model_name] = query_L0
-            result_dict[f"{target}-docs"][model_name] = docs_L0
+            result_dict[f"{target}-query"][model_name] = query_L0  # type:ignore
+            result_dict[f"{target}-docs"][model_name] = docs_L0  # type:ignore
 
     # Generate Markdown Table
     print("\n## L0 Sparsity\n")
