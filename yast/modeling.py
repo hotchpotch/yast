@@ -2,7 +2,6 @@ import logging
 import os
 
 import torch
-import torch.nn as nn
 from torch import nn
 from transformers import AutoModelForMaskedLM, PreTrainedModel
 
@@ -14,11 +13,11 @@ logger = logging.getLogger(__name__)
 class SpladeMaxPooling(nn.Module):
     """
     SPLADE Max pooling implementation based on:
-    
+
     "SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval"
     Formal et al., 2021 (https://arxiv.org/abs/2109.10086)
 
-    This implements the max pooling variant introduced in SPLADE v2, which replaced 
+    This implements the max pooling variant introduced in SPLADE v2, which replaced
     the original sum pooling with max pooling over the sequence length dimension:
     w_j = max_{i in t} log(1 + ReLU(w_ij))
 
