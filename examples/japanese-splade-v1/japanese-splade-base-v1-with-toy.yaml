@@ -1,7 +1,7 @@
 bf16: true
 dataloader_drop_last: true
 dataloader_num_workers: 12
-gradient_accumulation_steps: 32
+gradient_accumulation_steps: 8
 per_device_train_batch_size: 4
 learning_rate: 2.0e-05
 logging_steps: 200
@@ -18,25 +18,44 @@ noise_tokens: '" 〠 ! # $ % & '' ( ) * + , - . / : ; < = > ? @ [ \ ] ^ _ ` { | 
   ♢ ♣ ♤ ♥ ♦ ♧ ♨ ♩ ♪ ♫ ♬ ♭ ♮ ♯ ✓ ❖ ❶ ❷ ❸ ❹ ❺ ❻ ❼ ❽ ❾ ❿ ⤴ ⤵ ⦅ ⦆ ⦿ ⧺ ⧻ 、 。 〃 々 〇 〈 〉
   《 》 「 」 『 』 【 】 〒 〓 〔 〕 〖 〗 〘 〙 〜 〝 〟 〠 〳 〴 〵 〻 〽 ぁ ぃ ぅ ぇ ぉ っ ゝ ゞ ゠ ァ ゥ ェ ォ ッ ・
   ー ヽ ヾ 丿 仝 屮 彡 ﹅ ﹆ ]、'
-num_train_epochs: 12
-output_dir: ./output/japanese-splade-base-v1-mmarco-only
+num_train_epochs: 2
+output_dir: ./output/japanese-splade-base-v1
 overwrite_output_dir: true
 regularizer_doc: L1
 regularizer_query: L1
 remove_checkpoints: true
-run_name: japanese-splade-base-v1-mmarco-only
+run_name: japanese-splade-base-v1
 save_steps: 5000
 save_total_limit: 2
 seed: 42
 sparsity_warmup_steps_doc: 0.1
 sparsity_warmup_steps_query: 0.1
-sparsity_weight_doc: 0.01
-sparsity_weight_query: 0.025
+sparsity_weight_doc: 0.001
+sparsity_weight_query: 0.0025
 train_data:
+- ./examples/toy_datasets/japanese/ # toy dataset
 - dataset_class: yast.custom_dataset.mmarco.MMarcoHardNegatives
   train_data:
-    lang: japanese
+    lang: english
     reranker: bge-reranker-v2-m3
+- dataset_class: yast.custom_dataset.hpprc_emb_scores.HpprcEmbScoresDataset
+  train_data:
+  - subset: auto-wiki-qa
+  - subset: mmarco
+  - subset: jsquad
+  - subset: jaquad
+  - subset: auto-wiki-qa-nemotron
+  - subset: quiz-works
+  - subset: quiz-no-mori
+  - aug_factor: 5
+    subset: miracl
+  - aug_factor: 8
+    subset: jqara
+  - aug_factor: 5
+    subset: mr-tydi
+  - aug_factor: 3
+    subset: baobab-wiki-retrieval
+  - subset: mkqa
 train_group_size: 8
 training_losses: cross_entropy
 warmup_ratio: 0.05

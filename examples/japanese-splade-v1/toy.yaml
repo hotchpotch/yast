@@ -1,10 +1,10 @@
 bf16: true
 dataloader_drop_last: true
 dataloader_num_workers: 12
-gradient_accumulation_steps: 32
-per_device_train_batch_size: 4
+gradient_accumulation_steps: 1
+per_device_train_batch_size: 2
 learning_rate: 2.0e-05
-logging_steps: 200
+logging_steps: 1
 lr_scheduler_type: cosine
 max_grad_norm: 1.0
 max_length: 512
@@ -19,12 +19,12 @@ noise_tokens: '" 〠 ! # $ % & '' ( ) * + , - . / : ; < = > ? @ [ \ ] ^ _ ` { | 
   《 》 「 」 『 』 【 】 〒 〓 〔 〕 〖 〗 〘 〙 〜 〝 〟 〠 〳 〴 〵 〻 〽 ぁ ぃ ぅ ぇ ぉ っ ゝ ゞ ゠ ァ ゥ ェ ォ ッ ・
   ー ヽ ヾ 丿 仝 屮 彡 ﹅ ﹆ ]、'
 num_train_epochs: 12
-output_dir: ./output/japanese-splade-base-v1-mmarco-only
+output_dir: ./output/toy_japanese
 overwrite_output_dir: true
 regularizer_doc: L1
 regularizer_query: L1
 remove_checkpoints: true
-run_name: japanese-splade-base-v1-mmarco-only
+run_name: toy_japanese
 save_steps: 5000
 save_total_limit: 2
 seed: 42
@@ -33,10 +33,7 @@ sparsity_warmup_steps_query: 0.1
 sparsity_weight_doc: 0.01
 sparsity_weight_query: 0.025
 train_data:
-- dataset_class: yast.custom_dataset.mmarco.MMarcoHardNegatives
-  train_data:
-    lang: japanese
-    reranker: bge-reranker-v2-m3
+- ./examples/toy_datasets/japanese/
 train_group_size: 8
 training_losses: cross_entropy
 warmup_ratio: 0.05
