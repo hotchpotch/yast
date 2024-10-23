@@ -10,6 +10,11 @@ This repository is **experimental**, meaning that **breaking changes** may be in
 
 See the [Japanese SPLADE example](./examples/japanese-splade-v1/README.md)(日本語で書かれています) for details.
 
+### Related Blog Posts (in Japanese)
+
+- [高性能な日本語SPLADE（スパース検索）モデルを公開しました](https://secon.dev/entry/2024/10/07/100000/)
+- [SPLADE モデルの作り方・日本語SPLADEテクニカルレポート](https://secon.dev/entry/2024/10/23/080000-japanese-splade-tech-report/)
+
 ## Related Work
 
 We also provide another project, [YASEM (Yet Another Splade | Sparse Embedder)](https://github.com/hotchpotch/yasem), which offers a more user-friendly implementation for working with SPLADE models.
