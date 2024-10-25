@@ -2,6 +2,8 @@
 
 # 日本語 SPLADE モデルの学習方法
 
+[japanese-splade-base-v1](https://huggingface.co/hotchpotch/japanese-splade-base-v1) 等の学習方法です。
+
 yast のルートディレクトリで実行します。
 
 ```
