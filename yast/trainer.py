@@ -137,6 +137,7 @@ class SpladeTrainer(Trainer):
         model: Splade,
         inputs: dict[str, torch.Tensor],
         return_outputs: bool = False,
+        **kwargs,  # for transformers v4.46.0
     ) -> torch.Tensor | tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
         if "labels" in inputs:
             labels = inputs.pop("labels")
