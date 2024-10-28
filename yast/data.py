@@ -164,11 +164,7 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
         if len(pos_targets) >= pos_size:
             pos_positions = random.sample(range(len(pos_targets)), pos_size)
         else:
-            pos_positions = []
-            while len(pos_positions) < pos_size:
-                pos_positions += random.sample(
-                    range(len(pos_targets)), pos_size - len(pos_positions)
-                )
+            pos_positions = random.choices(range(len(pos_targets)), k=pos_size)
         pos_texts = [pos_targets[i][0] for i in pos_positions]
         pos_ids_score = [pos_targets[i][1] for i in pos_positions]
 
@@ -176,11 +172,8 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
         if len(neg_targets) >= neg_size:
             neg_positions = random.sample(range(len(neg_targets)), neg_size)
         else:
-            neg_positions = []
-            while len(neg_positions) < neg_size:
-                neg_positions += random.sample(
-                    range(len(neg_targets)), neg_size - len(neg_positions)
-                )
+            neg_positions = random.choices(range(len(neg_targets)), k=neg_size)
+
         neg_texts = [neg_targets[i][0] for i in neg_positions]
         neg_ids_score = [neg_targets[i][1] for i in neg_positions]
 
