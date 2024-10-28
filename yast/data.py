@@ -149,7 +149,7 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
         )
         return item
 
-    def create_butch_inputs(
+    def create_batch_inputs(
         self,
         query: str,
         pos_texts: list[str],
@@ -205,7 +205,7 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
         if not isinstance(neg_scores, list):
             neg_scores = [neg_scores]
 
-        return self.create_butch_inputs(
+        return self.create_batch_inputs(
             query, pos_texts, neg_texts, pos_scores, neg_scores
         )
 

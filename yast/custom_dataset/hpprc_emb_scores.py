@@ -271,7 +271,7 @@ class HpprcEmbScoresDataset(DatasetForSpladeTraining):
             pos_ids_score = [1.0] * len(pos_ids_score)
             neg_ids_score = [0.0] * len(neg_ids_score)
 
-        return self.create_butch_inputs(
+        return self.create_batch_inputs(
             query,
             pos_texts,
             neg_texts,
