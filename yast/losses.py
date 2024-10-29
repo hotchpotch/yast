@@ -121,6 +121,113 @@ class TeacherGuidedMarginLoss(nn.Module):
 
         # 最終的なロス（重み付き合計）
         loss = self.soft_ce_weight * soft_ce_loss + self.margin_weight * margin_loss
+        # XXX: dict で返せるようにする
+        return loss
+
+
+class SoftCrossEntropyLoss(nn.Module):
+    def __init__(self, temperature: float = 1.5):
+        """
+        Args:
+            temperature (float): スコアのスケーリングを制御する温度パラメータ
+        """
+        super(SoftCrossEntropyLoss, self).__init__()
+        self.temperature = temperature
+
+    def forward(self, scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            scores (torch.Tensor): 内積値 (batch_size, num_candidates)
+            labels (torch.Tensor): 教師スコア (batch_size, num_candidates)
+        Returns:
+            torch.Tensor: スカラー値のロス
+        """
+        if scores.shape != labels.shape:
+            raise ValueError(
+                f"Shape mismatch: scores {scores.shape} != labels {labels.shape}"
+            )
+
+        scaled_scores = scores / self.temperature
+        log_probs = F.log_softmax(scaled_scores, dim=1)
+        teacher_probs = F.softmax(labels / self.temperature, dim=1)
+        loss = -(teacher_probs * log_probs).sum(dim=1).mean()
+        return loss
+
+
+class WeightedMarginLoss(nn.Module):
+    def __init__(
+        self,
+        margin: float = 4.0,
+        max_negative_teacher: float = 0.3,
+        min_positive_teacher: float = 0.7,
+    ):
+        """
+        Args:
+            margin (float): positive/negative間の基本マージン
+            max_negative_teacher (float): negative例の教師スコアの最大期待値
+            min_positive_teacher (float): positive例の教師スコアの最小期待値
+        """
+        super(WeightedMarginLoss, self).__init__()
+        self.base_margin = margin
+        self.max_negative_teacher = max_negative_teacher
+        self.min_positive_teacher = min_positive_teacher
+
+    def get_margin(self, teacher_scores: torch.Tensor) -> torch.Tensor:
+        """
+        negative例の教師スコアに応じたマージンを計算
+        低いスコアの例（簡単なnegative）ほど大きいマージンを設定
+
+        Args:
+            teacher_scores: negative例の教師スコア (batch_size, num_negatives)
+        Returns:
+            torch.Tensor: マージン値
+        """
+        # 教師スコアを[0, max_negative_teacher]の範囲にクリップ
+        clipped_scores = torch.clamp(teacher_scores, 0.0, self.max_negative_teacher)
+
+        # スコアが低いほどマージンを大きく（0.9-1.1の範囲）
+        margin_scale = 1.1 - (clipped_scores / self.max_negative_teacher) * 0.2
+        return self.base_margin * margin_scale
+
+    def forward(self, scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            scores (torch.Tensor): 内積値 (batch_size, num_candidates)
+            labels (torch.Tensor): 教師スコア (batch_size, num_candidates)
+                                 最初の列がpositive、残りがnegative
+        Returns:
+            torch.Tensor: スカラー値のロス
+        """
+        if scores.shape != labels.shape:
+            raise ValueError(
+                f"Shape mismatch: scores {scores.shape} != labels {labels.shape}"
+            )
+
+        # 教師スコアの範囲チェック（警告を出すだけ）
+        negatives_mask = labels[:, 1:] > self.max_negative_teacher
+        if torch.any(negatives_mask):
+            count = torch.sum(negatives_mask).item()
+            print(
+                f"Warning: {count} negative teacher scores exceed expected maximum value of {self.max_negative_teacher}"
+            )
+
+        positives_mask = labels[:, 0] < self.min_positive_teacher
+        if torch.any(positives_mask):
+            count = torch.sum(positives_mask).item()
+            print(
+                f"Warning: {count} positive teacher scores are below minimum value of {self.min_positive_teacher}"
+            )
+
+        positives = scores[:, 0].unsqueeze(1)  # (batch_size, 1)
+        negatives = scores[:, 1:]  # (batch_size, num_negatives)
+        teacher_weights = labels[:, 1:]  # negativesの教師スコア
+
+        # マージンの計算
+        weighted_margin = self.get_margin(teacher_weights)
+
+        # マージンロスの計算
+        margin_diffs = negatives - positives + weighted_margin
+        loss = F.relu(margin_diffs).mean()
         return loss
 
 
@@ -137,4 +244,6 @@ losses: dict[str, Type[nn.Module]] = {
     "margin_mse": MarginMSELoss,
     "margin_ce": MarginCrossEntropyLoss,
     "teacher_guided_margin": TeacherGuidedMarginLoss,
+    "soft_ce": SoftCrossEntropyLoss,
+    "weighted_margin": WeightedMarginLoss,
 }
