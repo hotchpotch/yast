@@ -202,6 +202,7 @@ class SpladeTrainer(Trainer):
         self, queries_matrix: torch.Tensor, docs_matrix: torch.Tensor
     ) -> torch.Tensor:
         if self.noise_token_ids and self.args.noise_tokens_weight > 0:
+            # XXX: 毎回GPUに載せているが、本来一回で良い
             noise_token_ids_tensor = torch.tensor(
                 self.noise_token_ids, device=queries_matrix.device
             )
