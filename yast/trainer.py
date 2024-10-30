@@ -63,6 +63,15 @@ class SpladeTrainer(Trainer):
             )
             self.noise_token_ids = token_ids
 
+        if self.tokenizer:
+            # CLS, SEP, UNK token
+            if self.tokenizer.cls_token_id is not None:
+                self.noise_token_ids.append(self.tokenizer.cls_token_id)
+            if self.tokenizer.sep_token_id is not None:
+                self.noise_token_ids.append(self.tokenizer.sep_token_id)
+            if self.tokenizer.unk_token_id is not None:
+                self.noise_token_ids.append(self.tokenizer.unk_token_id)
+
     def _set_training_losses(self, training_loss: Any) -> None:
         """
         'cross_entropy',  [['loss': 'cross_entropy', 'weight': 1.0], ['loss': 'mse', 'weight': 1.0]]"
