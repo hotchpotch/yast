@@ -29,18 +29,18 @@ def _map_filter_score(example, neg_score_th: float, pos_score_th: float):
     # pos_score_filtered_index = [
     #     i for i, score in enumerate(pos_score) if score > pos_score_th
     # ]
-    neg_score_top50 = example[
-        "score.bge-reranker-v2-m3.neg_ids.japanese-splade-base-v1-mmarco-only.top50"
+    neg_score_top100 = example[
+        "score.bge-reranker-v2-m3.neg_ids.japanese-splade-base-v1-mmarco-only.top100"
     ]
-    neg_score_other50 = example[
-        "score.bge-reranker-v2-m3.neg_ids.japanese-splade-base-v1-mmarco-only.other50"
+    neg_score_other100 = example[
+        "score.bge-reranker-v2-m3.neg_ids.japanese-splade-base-v1-mmarco-only.other100"
     ]
     pos_score = example["score.bge-reranker-v2-m3.pos_ids"]
-    neg_score_top50_filtered_index = [
-        i for i, score in enumerate(neg_score_top50) if score < neg_score_th
+    neg_score_top100_filtered_index = [
+        i for i, score in enumerate(neg_score_top100) if score < neg_score_th
     ]
-    neg_score_other50_filtered_index = [
-        i for i, score in enumerate(neg_score_other50) if score < neg_score_th
+    neg_score_other100_filtered_index = [
+        i for i, score in enumerate(neg_score_other100) if score < neg_score_th
     ]
     pos_score_filtered_index = [
         i for i, score in enumerate(pos_score) if score > pos_score_th
@@ -52,32 +52,34 @@ def _map_filter_score(example, neg_score_th: float, pos_score_th: float):
         # "neg": [example["neg"][i] for i in neg_score_filtered_index],
         # "pos.score": [pos_score[i] for i in pos_score_filtered_index],
         # "pos": [example["pos"][i] for i in pos_score_filtered_index],
-        "neg.score.top50": [neg_score_top50[i] for i in neg_score_top50_filtered_index],
-        "neg.top50": [
-            example["neg_ids.japanese-splade-base-v1-mmarco-only.top50"][i]
-            for i in neg_score_top50_filtered_index
+        "neg.score.top100": [
+            neg_score_top100[i] for i in neg_score_top100_filtered_index
         ],
-        "neg.score.other50": [
-            neg_score_other50[i] for i in neg_score_other50_filtered_index
+        "neg.top100": [
+            example["neg_ids.japanese-splade-base-v1-mmarco-only.top100"][i]
+            for i in neg_score_top100_filtered_index
         ],
-        "neg.other50": [
-            example["neg_ids.japanese-splade-base-v1-mmarco-only.other50"][i]
-            for i in neg_score_other50_filtered_index
+        "neg.score.other100": [
+            neg_score_other100[i] for i in neg_score_other100_filtered_index
+        ],
+        "neg.other100": [
+            example["neg_ids.japanese-splade-base-v1-mmarco-only.other100"][i]
+            for i in neg_score_other100_filtered_index
         ],
         "pos.score": [pos_score[i] for i in pos_score_filtered_index],
         "pos": [example["pos_ids"][i] for i in pos_score_filtered_index],
     }
     # XXX:
-    # posは、neg_score_top50 から > 0.95 のものでサンプリングしても良いのでは?
+    # posは、neg_score_top100 から > 0.95 のものでサンプリングしても良いのでは?
 
     if len(pos_score_filtered_index) == 0:
-        # neg_score_top50 の最大値と、その index を取得
-        max_score = max(neg_score_top50)
-        max_score_index = neg_score_top50.index(max_score)
+        # neg_score_top100 の最大値と、その index を取得
+        max_score = max(neg_score_top100)
+        max_score_index = neg_score_top100.index(max_score)
         if max_score >= 0.9:
             # pos が閾値以上のものがなく、かつ十分なスコアが neg にある場合は、それを pos とする
             data["pos"] = [
-                example["neg_ids.japanese-splade-base-v1-mmarco-only.top50"][
+                example["neg_ids.japanese-splade-base-v1-mmarco-only.top100"][
                     max_score_index
                 ]
             ]
@@ -89,7 +91,7 @@ def _map_filter_score(example, neg_score_th: float, pos_score_th: float):
 def _filter_score(example, net_filter_count: int):
     # neg のカウントがN以上で、pos のカウントが1以上のものを返す
     return (
-        len(example["neg.other50"] + example["neg.top50"]) >= net_filter_count
+        len(example["neg.other100"] + example["neg.top100"]) >= net_filter_count
         and len(example["pos"]) >= 1
     )
 
@@ -141,33 +143,33 @@ class MMarcoHardNegativesV1(DatasetForSpladeTraining):
         pos_ids_score = self.dataset[item]["pos.score"]
         # neg_ids = self.dataset[item]["neg"]
         # neg_ids_score = self.dataset[item]["neg.score"]
-        neg_ids_top50 = self.dataset[item]["neg.top50"]
-        neg_ids_score_top50 = self.dataset[item]["neg.score.top50"]
+        neg_ids_top100 = self.dataset[item]["neg.top100"]
+        neg_ids_score_top100 = self.dataset[item]["neg.score.top100"]
 
-        # N をneg_ids_top50からrandom sampling
-        top_50_count = 4
-        if len(neg_ids_top50) < top_50_count:
-            top_50_count = len(neg_ids_top50)
-        neg_ids_top50_sampled = random.sample(neg_ids_top50, top_50_count)
-        neg_ids_score_top50_sampled = [
-            neg_ids_score_top50[neg_ids_top50.index(id_)]
-            for id_ in neg_ids_top50_sampled
+        # N をneg_ids_top100からrandom sampling
+        top_100_count = 4
+        if len(neg_ids_top100) < top_100_count:
+            top_100_count = len(neg_ids_top100)
+        neg_ids_top100_sampled = random.sample(neg_ids_top100, top_100_count)
+        neg_ids_score_top100_sampled = [
+            neg_ids_score_top100[neg_ids_top100.index(id_)]
+            for id_ in neg_ids_top100_sampled
         ]
 
         # 7 じゃなくて、train_group_size - 1 にする
-        other_50_count = 7 - top_50_count
-        neg_ids_other50 = self.dataset[item]["neg.other50"]
-        neg_ids_score_other50 = self.dataset[item]["neg.score.other50"]
-        if len(neg_ids_other50) < other_50_count:
-            other_50_count = len(neg_ids_other50)
-        neg_ids_other50_sampled = random.sample(neg_ids_other50, other_50_count)
-        neg_ids_score_other50_sampled = [
-            neg_ids_score_other50[neg_ids_other50.index(id_)]
-            for id_ in neg_ids_other50_sampled
+        other_100_count = 7 - top_100_count
+        neg_ids_other100 = self.dataset[item]["neg.other100"]
+        neg_ids_score_other100 = self.dataset[item]["neg.score.other100"]
+        if len(neg_ids_other100) < other_100_count:
+            other_100_count = len(neg_ids_other100)
+        neg_ids_other100_sampled = random.sample(neg_ids_other100, other_100_count)
+        neg_ids_score_other100_sampled = [
+            neg_ids_score_other100[neg_ids_other100.index(id_)]
+            for id_ in neg_ids_other100_sampled
         ]
 
-        neg_ids = neg_ids_top50_sampled + neg_ids_other50_sampled
-        neg_ids_score = neg_ids_score_top50_sampled + neg_ids_score_other50_sampled
+        neg_ids = neg_ids_top100_sampled + neg_ids_other100_sampled
+        neg_ids_score = neg_ids_score_top100_sampled + neg_ids_score_other100_sampled
 
         pos_texts = [self.get_collection_text(pos_id) for pos_id in pos_ids]
         neg_texts = [self.get_collection_text(neg_id) for neg_id in neg_ids]
