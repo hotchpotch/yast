@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 HADR_NEGATIVE_SCORE_DS = "hotchpotch/japanese-splade-v1-hard-negatives"
 DS_SPIT = "train"
-QUERY_DS = "mmarco-dataset"
-COLLECTION_DS = "mmarco-collection"
+# QUERY_DS = "mmarco-dataset"
+# COLLECTION_DS = "mmarco-collection"
 
 NEG_SCORE_TH = 0.3
 POS_SCORE_TH = 0.7
@@ -94,13 +94,12 @@ def _filter_score(example, net_filter_count: int):
     )
 
 
-class MMarcoHardNegativesV1(DatasetForSpladeTraining):
+class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
     def __init__(
         self,
         args: DataArguments,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     ):
-        logger.info("Initializing MMarcoHardNegatives dataset")
 
         self.query_max_len = args.dataset_options.get("query_max_len", 256)
         self.doc_max_len = args.dataset_options.get("doc_max_len", 1024)
@@ -108,6 +107,11 @@ class MMarcoHardNegativesV1(DatasetForSpladeTraining):
 
         dataset_options = args.dataset_options
         self.binarize_label: bool = dataset_options.get("binarize_label", False)
+        dataset_name = dataset_options.get("dataset_name", "mmarco")
+        logger.info(f"Initializing {dataset_name} hard_negative dataset")
+
+        query_ds_name = f"{dataset_name}-dataset"
+        collection_ds_name = f"{dataset_name}-collection"
 
         # lang = train_data["lang"]
         # reranker_name = train_data["reranker"]
@@ -115,9 +119,9 @@ class MMarcoHardNegativesV1(DatasetForSpladeTraining):
         pos_score_th = train_data.get("pos_score_th", POS_SCORE_TH)
         net_filter_count = train_data.get("net_filter_count", NEG_FILTER_COUNT)
 
-        ds = load_dataset(HADR_NEGATIVE_SCORE_DS, QUERY_DS, split=DS_SPIT)
+        ds = load_dataset(HADR_NEGATIVE_SCORE_DS, query_ds_name, split=DS_SPIT)
         self.collection_ds = load_dataset(
-            HADR_NEGATIVE_SCORE_DS, COLLECTION_DS, split=DS_SPIT
+            HADR_NEGATIVE_SCORE_DS, collection_ds_name, split=DS_SPIT
         )
         ds = ds.map(
             _map_filter_score,
