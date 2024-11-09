@@ -103,6 +103,7 @@ def main():
         model_args,
         model_args.model_name_or_path,
     )
+    model.tokenizer = tokenizer
 
     train_dataset = create_dateset_from_args(data_args, tokenizer)
     trainer = SpladeTrainer(

@@ -3,7 +3,7 @@ import os
 
 import torch
 from torch import nn
-from transformers import AutoModelForMaskedLM, PreTrainedModel
+from transformers import AutoModelForMaskedLM, PreTrainedModel, PreTrainedTokenizerBase
 
 from .arguments import ModelArguments
 
@@ -58,6 +58,8 @@ class SpladeMaxPooling(nn.Module):
 
 
 class Splade(nn.Module):
+    tokenizer: PreTrainedTokenizerBase | None = None
+
     def __init__(
         self,
         hf_model: PreTrainedModel,

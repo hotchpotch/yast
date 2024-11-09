@@ -141,7 +141,7 @@ class SpladeTrainer(Trainer):
             self.args.sparsity_weight_query, self.warmup_steps_query
         )
 
-    def compute_loss( # type: ignore[override]
+    def compute_loss(  # type: ignore[override]
         self,
         model: Splade,
         inputs: dict[str, torch.Tensor],
