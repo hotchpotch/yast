@@ -86,9 +86,10 @@ class Splade(nn.Module):
     def gradient_checkpointing_enable(self, **kwargs):
         self.hf_model.gradient_checkpointing_enable(**kwargs)
 
-    def forward(self, batch_inputs: dict, batch_size: int):
-        logits = self.hf_model(**batch_inputs, return_dict=True).logits
-        logits = self.splade_max(logits, attention_mask=batch_inputs["attention_mask"])
+    def _forward_logits(
+        self, logits: torch.Tensor, attention_mask: torch.Tensor, batch_size: int
+    ):
+        logits = self.splade_max(logits, attention_mask)
         logits_shape = logits.shape
         assert len(logits_shape) == 2
         query_with_docs_size = int(
@@ -105,6 +106,11 @@ class Splade(nn.Module):
         docs = state[:, 1:, :]
 
         return queries, docs
+
+    def forward(self, batch_inputs: dict, batch_size: int):
+        logits = self.hf_model(**batch_inputs, return_dict=True).logits
+        attention_mask = batch_inputs["attention_mask"]
+        return self._forward_logits(logits, attention_mask, batch_size)
 
     @classmethod
     def from_pretrained(cls, model_args: ModelArguments, *args, **kwargs):

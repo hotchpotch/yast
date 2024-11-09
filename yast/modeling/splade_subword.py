@@ -22,6 +22,11 @@ class SpladeSubword(Splade):
     def tokenizer(self, value: PreTrainedTokenizerBase):
         # override
         self._tokenizer = value
+        subword_token_ids = []
+        for token in value.get_vocab():
+            if token.startswith(self.subword_prefix):
+                subword_token_ids.append(value.convert_tokens_to_ids(token))  # type: ignore
+        self.subword_token_ids = set(subword_token_ids)
 
     def __init__(self, hf_model: PreTrainedModel, model_args: ModelArguments):
         """
@@ -31,6 +36,8 @@ class SpladeSubword(Splade):
         super().__init__(hf_model, model_args)
         self.relu = nn.ReLU()
         pooling_type = "max"
+        self.subword_prefix = "##"
+        self.subword_token_ids = set()
         self.pooling_type = pooling_type
 
     def subword_pooling(self, tensor, subword_indices, attention_mask):
@@ -71,41 +78,17 @@ class SpladeSubword(Splade):
 
         return pooled_output
 
-    def forward(self, output, attention_mask, subword_indices):
-        """
-        順伝播処理
+    def forward(self, batch_inputs: dict, batch_size: int):
+        logits = self.hf_model(**batch_inputs, return_dict=True).logits
+        attention_mask = batch_inputs["attention_mask"]
 
-        Args:
-            output (torch.Tensor): 入力テンソル (batch_size, sequence_length, vocab_size)
-            attention_mask (torch.Tensor): 注意マスク (batch_size, sequence_length)
-            subword_indices (torch.Tensor): サブワードグループインデックス (batch_size, sequence_length)
+        subword_indices = create_subword_indices(
+            logits,
+            self.subword_token_ids,
+        )
 
-        Returns:
-            torch.Tensor: 出力テンソル (batch_size, vocab_size)
-        """
-        if output.dim() != 3 or attention_mask.dim() != 2:
-            raise ValueError("Invalid input dimensions")
-
-        if output.size(0) != attention_mask.size(0) or output.size(
-            1
-        ) != attention_mask.size(1):
-            raise ValueError("Mismatched batch size or sequence length")
-
-        # サブワードインデックスの値の検証
-        if torch.any((subword_indices != self.SUBWORD_MASK_ID) & (subword_indices < 0)):
-            raise ValueError(
-                f"Invalid subword indices found. Must be either >= 0 or {self.SUBWORD_MASK_ID}"
-            )
-
-        # サブワード単位でのプーリング
-        pooled = self.subword_pooling(output, subword_indices, attention_mask)
-
-        # SPLADEの処理
-        activated = torch.log(1 + self.relu(pooled))
-        masked = activated * attention_mask.unsqueeze(-1)
-        values, _ = torch.max(masked, dim=1)
-
-        return values
+        pooled = self.subword_pooling(logits, subword_indices, attention_mask)
+        return self._forward_logits(pooled, attention_mask, batch_size)
 
 
 def create_subword_indices(
@@ -178,111 +161,3 @@ def create_subword_indices(
             subword_indices[b, word_start_pos] = -100
 
     return subword_indices
-
-
-# 使用例
-def test_splade_subword():
-    """
-    サブワードプーリングのテスト関数
-    """
-    # サンプルのサブワードトークンID
-    subword_token_ids = {1, 2, 3}  # 例: ID 1, 2, 3 がサブワードトークン
-
-    # サンプルの入力データ
-    token_ids = torch.tensor(
-        [
-            [10, 1, 2, 11, 3, 12],  # 例: [通常, サブ, サブ, 通常, サブ, 通常]
-            [13, 14, 15, -100, -100, -100],  # 例: [通常, 通常, 通常, PAD, PAD, PAD]
-        ]
-    )
-
-    # サブワードインデックスの生成
-    subword_indices = create_subword_indices(token_ids, subword_token_ids)
-    print("Generated subword indices:\n", subword_indices)
-
-    # 残りのテストデータを生成
-    batch_size, seq_len = token_ids.shape
-    vocab_size = 32000
-    # 勾配を有効にしたい
-    output_logits = torch.randn(batch_size, seq_len, vocab_size, requires_grad=True)
-    attention_mask = (token_ids != -100).long()
-
-    # モデルのテスト
-    model_max = SpladeMaxPoolingWithSubword(pooling_type="max")
-    model_mean = SpladeMaxPoolingWithSubword(pooling_type="mean")
-
-    output_max = model_max(output_logits, attention_mask, subword_indices)
-    output_mean = model_mean(output_logits, attention_mask, subword_indices)
-
-    # check require_grad
-    print("Max pooling requires_grad:", output_max.requires_grad)
-    print("Mean pooling requires_grad:", output_mean.requires_grad)
-    print("Max pooling output shape:", output_max.shape)
-    print("Mean pooling output shape:", output_mean.shape)
-
-    return output_max, output_mean, subword_indices
-
-
-def test_gradient_flow():
-    """
-    勾配の流れをテストする関数 - 修正版
-    """
-    # サンプルデータの作成 - 明示的に勾配を有効化
-    batch_size, seq_len, vocab_size = 2, 6, 100
-
-    # ここが重要: requires_grad=True で初期化し、detach() を使って新しいリーフテンソルを作成
-    output_logits = (
-        torch.randn(batch_size, seq_len, vocab_size).requires_grad_(True).detach()
-    )
-    output_logits.requires_grad_(True)  # 明示的に勾配計算を有効化
-
-    attention_mask = torch.ones(batch_size, seq_len)
-    subword_indices = torch.tensor(
-        [
-            [0, 0, 0, 1, 1, 2],  # バッチ1
-            [0, 1, 2, -100, -100, -100],  # バッチ2
-        ]
-    )
-
-    # デバイスの選択と移動
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = SpladeMaxPoolingWithSubword(pooling_type="max").to(device)
-    output_logits = output_logits.to(device)
-    attention_mask = attention_mask.to(device)
-    subword_indices = subword_indices.to(device)
-
-    # 勾配計算の前に、テンソルの状態を確認
-    print("Before forward pass:")
-    print("- requires_grad:", output_logits.requires_grad)
-    print("- is_leaf:", output_logits.is_leaf)
-
-    # 順伝播
-    output = model(output_logits, attention_mask, subword_indices)
-
-    print("\nAfter forward pass:")
-    print("- Output requires_grad:", output.requires_grad)
-
-    # 逆伝播のテスト
-    loss = output.sum()
-    loss.backward()
-
-    # 勾配の確認 - リーフテンソルの勾配を確認
-    grad_exists = output_logits.grad is not None
-    if grad_exists:
-        grad_nonzero = torch.any(output_logits.grad != 0).item()
-        print("\nGradient check:")
-        print("- Gradient exists:", grad_exists)
-        print("- Gradient has non-zero values:", grad_nonzero)
-        print("- Gradient magnitude:", output_logits.grad.abs().mean().item())
-    else:
-        print("\nNo gradient was computed!")
-
-    # メモリ解放
-    del output_logits, attention_mask, subword_indices, output, loss
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-
-if __name__ == "__main__":
-    output_max, output_mean, subword_indices = test_splade_subword()
-    # test_gradient_flow()
