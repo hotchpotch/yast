@@ -58,7 +58,15 @@ class SpladeMaxPooling(nn.Module):
 
 
 class Splade(nn.Module):
-    tokenizer: PreTrainedTokenizerBase | None = None
+    _tokenizer: PreTrainedTokenizerBase | None = None
+
+    @property
+    def tokenizer(self) -> PreTrainedTokenizerBase | None:
+        return self._tokenizer
+
+    @tokenizer.setter
+    def tokenizer(self, value: PreTrainedTokenizerBase):
+        self._tokenizer = value
 
     def __init__(
         self,
