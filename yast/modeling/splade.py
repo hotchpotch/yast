@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from transformers import AutoModelForMaskedLM, PreTrainedModel, PreTrainedTokenizerBase
 
-from .arguments import ModelArguments
+from ..arguments import ModelArguments
 
 logger = logging.getLogger(__name__)
 
