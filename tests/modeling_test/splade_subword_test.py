@@ -4,13 +4,21 @@ from yast.modeling.splade_subword import create_subword_indices
 
 
 def test_create_subword_indices():
-    # サンプルのサブワードトークンID
-    subword_token_ids = {1, 2, 3}  # 例: ID 1, 2, 3 がサブワードトークン
+    # Sample subword token IDs
+    subword_token_ids = {1, 2, 3}  # Example: IDs 1, 2, 3 are subword tokens
 
-    # サンプルの入力データ
+    # Sample input data
     token_ids = torch.tensor(
         [
-            [9, 1, 2, 10, 11, 3, 12],  # 例: [通常, サブ, サブ, 通常, 通常, サブ, 通常]
+            [
+                9,
+                1,
+                2,
+                10,
+                11,
+                3,
+                12,
+            ],  # Example: [normal, subword, subword, normal, normal, subword, normal]
             [
                 13,
                 14,
@@ -19,7 +27,7 @@ def test_create_subword_indices():
                 -100,
                 -100,
                 -100,
-            ],  # 例: [通常, サブ, 通常, PAD, PAD, PAD, PAD
+            ],  # Example: [normal, subword, normal, PAD, PAD, PAD, PAD]
         ]
     )
 
