@@ -1,9 +1,8 @@
 import logging
-import os
 
 import torch
 from torch import nn
-from transformers import AutoModelForMaskedLM, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from ..arguments import ModelArguments
 from .splade import Splade
@@ -79,13 +78,13 @@ class SpladeSubword(Splade):
         return pooled_output
 
     def forward(self, batch_inputs: dict, batch_size: int):
-        logits = self.hf_model(**batch_inputs, return_dict=True).logits
-        attention_mask = batch_inputs["attention_mask"]
-
         subword_indices = create_subword_indices(
-            logits,
+            batch_inputs["input_ids"],
             self.subword_token_ids,
         )
+
+        logits = self.hf_model(**batch_inputs, return_dict=True).logits
+        attention_mask = batch_inputs["attention_mask"]
 
         pooled = self.subword_pooling(logits, subword_indices, attention_mask)
         return self._forward_logits(pooled, attention_mask, batch_size)
