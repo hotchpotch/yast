@@ -78,7 +78,7 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
             for token in tokenizer.get_vocab():
                 if token.startswith(subword_prefix):
                     self.subword_token_ids.add(tokenizer.convert_tokens_to_ids(token))
-        print(f"!!!!!!!!! Subword token ids: len={len(self.subword_token_ids)}")
+            logger.info(f"Subword token count: {len(self.subword_token_ids)}")
 
     def load_dataset(self, target_name: str) -> Dataset:
         if target_name.endswith(".jsonl") or target_name.endswith(".json"):
