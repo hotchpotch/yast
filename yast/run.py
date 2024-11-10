@@ -41,15 +41,12 @@ def _setup_wandb():
         os.environ["WANDB_PROJECT"] = "splade"
 
 
-def splade_model_factory(
-    model_args: ModelArguments, tokenizer: PreTrainedTokenizerBase
-):
-    if model_args.use_subword:
+def splade_model_factory(model_args: ModelArguments, use_subword: bool):
+    if use_subword:
         logger.info("Use subword splade model")
         model = SpladeSubword.from_pretrained(model_args, model_args.model_name_or_path)
     else:
         model = Splade.from_pretrained(model_args, model_args.model_name_or_path)
-    model.tokenizer = tokenizer
     return model
 
 
@@ -103,6 +100,11 @@ def main():
         bool(training_args.local_rank != -1),
         training_args.fp16,
     )
+
+    # override
+    if training_args.use_subword and not data_args.create_subword_indices:
+        logging.info("Set create_subword_indices to True")
+        data_args.create_subword_indices = True
     logger.info("Training/evaluation parameters %s", training_args)
     logger.info("Model parameters %s", model_args)
     logger.info("Data parameters %s", data_args)
@@ -118,7 +120,7 @@ def main():
         use_fast=False,
     )
 
-    model = splade_model_factory(model_args, tokenizer)
+    model = splade_model_factory(model_args, training_args.use_subword)
 
     train_dataset = create_dateset_from_args(data_args, tokenizer)
     trainer = SpladeTrainer(

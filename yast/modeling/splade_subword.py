@@ -2,7 +2,7 @@ import logging
 
 import torch
 from torch import nn
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import PreTrainedModel
 
 from ..arguments import ModelArguments
 from .splade import Splade
@@ -13,24 +13,9 @@ logger = logging.getLogger(__name__)
 class SpladeSubword(Splade):
     SUBWORD_MASK_ID = -100
 
-    @property
-    def tokenizer(self) -> PreTrainedTokenizerBase | None:
-        return self._tokenizer
-
-    @tokenizer.setter
-    def tokenizer(self, value: PreTrainedTokenizerBase):
-        self._tokenizer = value
-        subword_token_ids = []
-        for token in value.get_vocab():
-            if token.startswith(self.subword_prefix):
-                subword_token_ids.append(value.convert_tokens_to_ids(token))  # type: ignore
-        self.subword_token_ids = set(subword_token_ids)
-
     def __init__(self, hf_model: PreTrainedModel, model_args: ModelArguments):
         super().__init__(hf_model, model_args)
         self.relu = nn.ReLU()
-        self.subword_prefix = "##"
-        self.subword_token_ids = set()
         self.pooling_type = "max"  # or "mean"
 
     def create_group_index_tensor(

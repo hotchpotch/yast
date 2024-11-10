@@ -72,10 +72,13 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
         self.total_len = len(self.dataset)
 
         self.subword_token_ids = set()
-        self.subword_prefix = "##"  # BERTスタイルのサブワードプレフィックス
-        for token in tokenizer.get_vocab():
-            if token.startswith(self.subword_prefix):
-                self.subword_token_ids.add(tokenizer.convert_tokens_to_ids(token))
+
+        if args.create_subword_indices:
+            subword_prefix = "##"  # bert subword prefix
+            for token in tokenizer.get_vocab():
+                if token.startswith(subword_prefix):
+                    self.subword_token_ids.add(tokenizer.convert_tokens_to_ids(token))
+        print(f"!!!!!!!!! Subword token ids: len={len(self.subword_token_ids)}")
 
     def load_dataset(self, target_name: str) -> Dataset:
         if target_name.endswith(".jsonl") or target_name.endswith(".json"):
@@ -153,9 +156,10 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
             max_length=max_length,
             padding=False,
         )
-        item["subword_indices"] = create_subword_indices(
-            torch.tensor(item["input_ids"]).unsqueeze(0), self.subword_token_ids
-        ).squeeze(0)
+        if len(self.subword_token_ids) > 0:
+            item["subword_indices"] = create_subword_indices(
+                torch.tensor(item["input_ids"]).unsqueeze(0), self.subword_token_ids
+            ).squeeze(0)
 
         return item
 
@@ -226,14 +230,16 @@ class GroupCollator(DataCollatorWithPadding):
         if isinstance(features[0], list):
             features = sum(features, [])  # type: ignore
 
+        # subword_indices がある場合、
         # サブワードインデックスのパディング処理を追加
-        max_length = max(len(f["input_ids"]) for f in features)
-        for feature in features:
-            padding_length = max_length - len(feature["input_ids"])
-            if padding_length > 0:
-                feature["subword_indices"] = (
-                    feature["subword_indices"].tolist() + [-100] * padding_length
-                )
+        if "subword_indices" in features[0]:
+            max_length = max(len(f["input_ids"]) for f in features)
+            for feature in features:
+                padding_length = max_length - len(feature["input_ids"])
+                if padding_length > 0:
+                    feature["subword_indices"] = (
+                        feature["subword_indices"].tolist() + [-100] * padding_length
+                    )
 
         return super().__call__(features)
 

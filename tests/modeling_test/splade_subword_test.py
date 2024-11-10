@@ -71,7 +71,6 @@ def test_splade_subword():
         model_args,
         model_args.model_name_or_path,
     )
-    model.tokenizer = tokenizer
 
     # model.forward 用のデータを作成
     batch_inputs = tokenizer(

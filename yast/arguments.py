@@ -33,10 +33,6 @@ class ModelArguments:
             "help": "Pretrained tokenizer name or path if not the same as model_name"
         },
     )
-    use_subword: bool = field(
-        default=False,
-        metadata={"help": "Use subword splade model"},
-    )
 
 
 @dataclass
@@ -117,6 +113,10 @@ class SpladeTrainingArguments(TrainingArguments):
         default=1.0,
         metadata={"help": "Noise tokens loss weight"},
     )
+    use_subword: bool = field(
+        default=False,
+        metadata={"help": "Use subword for splade training"},
+    )
 
 
 @dataclass
@@ -140,6 +140,10 @@ class DataArguments:
     )
     dataset_options: dict = field(
         default_factory=dict, metadata={"help": "Additional options for the dataset"}
+    )
+    create_subword_indices: bool = field(
+        default=False,
+        metadata={"help": "Create subword indices for splade model"},
     )
 
     def __post_init__(self):
