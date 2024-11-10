@@ -11,12 +11,19 @@ logger = logging.getLogger(__name__)
 
 
 class SpladeSubword(Splade):
+    POOLING_TYPES = ["max", "mean"]
     SUBWORD_MASK_ID = -100
 
     def __init__(self, hf_model: PreTrainedModel, model_args: ModelArguments):
         super().__init__(hf_model, model_args)
         self.relu = nn.ReLU()
-        self.pooling_type = "max"  # or "mean"
+        subword_pooling = model_args.subword_pooling
+        # max or mean check
+        if subword_pooling is not None and subword_pooling not in self.POOLING_TYPES:
+            raise ValueError(
+                f"Invalid pooling type: {subword_pooling}. Please choose from {self.POOLING_TYPES}"
+            )
+        self.pooling_type = subword_pooling
 
     def create_group_index_tensor(
         self, subword_indices: torch.Tensor, attention_mask: torch.Tensor

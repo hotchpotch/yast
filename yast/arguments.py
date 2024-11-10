@@ -33,6 +33,10 @@ class ModelArguments:
             "help": "Pretrained tokenizer name or path if not the same as model_name"
         },
     )
+    subword_pooling: Optional[str] = field(
+        default=None,
+        metadata={"help": "Pooling type for subword, max or mean(default: None)"},
+    )
 
 
 @dataclass

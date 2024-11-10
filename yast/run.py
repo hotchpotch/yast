@@ -12,7 +12,6 @@ from pathlib import Path
 from transformers import (
     AutoTokenizer,
     HfArgumentParser,
-    PreTrainedTokenizerBase,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -41,9 +40,9 @@ def _setup_wandb():
         os.environ["WANDB_PROJECT"] = "splade"
 
 
-def splade_model_factory(model_args: ModelArguments, use_subword: bool):
-    if use_subword:
-        logger.info("Use subword splade model")
+def splade_model_factory(model_args: ModelArguments):
+    if model_args.subword_pooling:
+        logger.info(f"Use subword splade model: {model_args.subword_pooling}")
         model = SpladeSubword.from_pretrained(model_args, model_args.model_name_or_path)
     else:
         model = Splade.from_pretrained(model_args, model_args.model_name_or_path)
@@ -102,7 +101,7 @@ def main():
     )
 
     # override
-    if training_args.use_subword and not data_args.create_subword_indices:
+    if model_args.subword_pooling and not data_args.create_subword_indices:
         logging.info("Set create_subword_indices to True")
         data_args.create_subword_indices = True
     logger.info("Training/evaluation parameters %s", training_args)
@@ -120,7 +119,7 @@ def main():
         use_fast=False,
     )
 
-    model = splade_model_factory(model_args, training_args.use_subword)
+    model = splade_model_factory(model_args)
 
     train_dataset = create_dateset_from_args(data_args, tokenizer)
     trainer = SpladeTrainer(
