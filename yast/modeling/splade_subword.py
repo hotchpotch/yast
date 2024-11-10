@@ -113,8 +113,8 @@ def create_subword_indices(
         -100,  # PADDINGのマスク値
     )
 
+    current_subword_group_idx = -1
     for b in range(batch_size):
-        current_word_idx = -1
         word_start_pos = -1
         in_subword_sequence = False
 
@@ -140,15 +140,17 @@ def create_subword_indices(
 
             # サブワードシーケンスの開始
             elif is_subword and not in_subword_sequence:
-                current_word_idx += 1
+                current_subword_group_idx += 1
                 in_subword_sequence = True
                 # 直前のトークンも同じグループに
                 if word_start_pos != -1:
-                    subword_indices[b, word_start_pos : i + 1] = current_word_idx
+                    subword_indices[b, word_start_pos : i + 1] = (
+                        current_subword_group_idx
+                    )
 
             # サブワードシーケンスの途中
             elif is_subword and in_subword_sequence:
-                subword_indices[b, i] = current_word_idx
+                subword_indices[b, i] = current_subword_group_idx
 
             # サブワードシーケンスの終了
             if not is_subword and in_subword_sequence:
