@@ -9,8 +9,15 @@ import shutil
 import sys
 from pathlib import Path
 
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers import (
+    AutoTokenizer,
+    HfArgumentParser,
+    PreTrainedTokenizerBase,
+    set_seed,
+)
 from transformers.trainer_utils import get_last_checkpoint
+
+from yast.modeling.splade_subword import SpladeSubword
 
 from .arguments import (
     DataArguments,
@@ -32,6 +39,18 @@ logger = logging.getLogger(__name__)
 def _setup_wandb():
     if "WANDB_PROJECT" not in os.environ:
         os.environ["WANDB_PROJECT"] = "splade"
+
+
+def splade_model_factory(
+    model_args: ModelArguments, tokenizer: PreTrainedTokenizerBase
+):
+    if model_args.use_subword:
+        logger.info("Use subword splade model")
+        model = SpladeSubword.from_pretrained(model_args, model_args.model_name_or_path)
+    else:
+        model = Splade.from_pretrained(model_args, model_args.model_name_or_path)
+    model.tokenizer = tokenizer
+    return model
 
 
 def main():
@@ -99,11 +118,7 @@ def main():
         use_fast=False,
     )
 
-    model = Splade.from_pretrained(
-        model_args,
-        model_args.model_name_or_path,
-    )
-    model.tokenizer = tokenizer
+    model = splade_model_factory(model_args, tokenizer)
 
     train_dataset = create_dateset_from_args(data_args, tokenizer)
     trainer = SpladeTrainer(

@@ -41,7 +41,7 @@ class SpladeSubword(Splade):
 
     def subword_pooling(self, tensor, subword_indices, attention_mask):
         batch_size, seq_len, vocab_size = tensor.size()
-        device = tensor.device
+        # device = tensor.device
 
         # 勾配を保持するため、clone()を使用
         masked_tensor = tensor * attention_mask.unsqueeze(-1).to(tensor.dtype)

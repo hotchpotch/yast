@@ -33,6 +33,10 @@ class ModelArguments:
             "help": "Pretrained tokenizer name or path if not the same as model_name"
         },
     )
+    use_subword: bool = field(
+        default=False,
+        metadata={"help": "Use subword splade model"},
+    )
 
 
 @dataclass
