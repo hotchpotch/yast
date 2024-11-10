@@ -19,7 +19,6 @@ class SpladeSubword(Splade):
 
     @tokenizer.setter
     def tokenizer(self, value: PreTrainedTokenizerBase):
-        # override
         self._tokenizer = value
         subword_token_ids = []
         for token in value.get_vocab():
@@ -28,52 +27,61 @@ class SpladeSubword(Splade):
         self.subword_token_ids = set(subword_token_ids)
 
     def __init__(self, hf_model: PreTrainedModel, model_args: ModelArguments):
-        """
-        Args:
-            pooling_type (str): プーリングの種類 ('max' または 'mean')
-        """
         super().__init__(hf_model, model_args)
         self.relu = nn.ReLU()
-        pooling_type = "max"
         self.subword_prefix = "##"
         self.subword_token_ids = set()
-        self.pooling_type = pooling_type
+        self.pooling_type = "max"
 
     def subword_pooling(self, tensor, subword_indices, attention_mask):
+        """
+        サブワードグループごとにプーリングを行う
+
+        Args:
+            tensor: 入力テンソル (batch_size, seq_len, vocab_size)
+            subword_indices: サブワードグループのインデックス (batch_size, seq_len)
+            attention_mask: アテンションマスク (batch_size, seq_len)
+        """
         batch_size, seq_len, vocab_size = tensor.size()
-        # device = tensor.device
+        device = tensor.device
 
-        # 勾配を保持するため、clone()を使用
-        masked_tensor = tensor * attention_mask.unsqueeze(-1).to(tensor.dtype)
-        pooled_output = torch.zeros_like(tensor)  # requires_gradは継承される
+        # 勾配を保持するため、新しいテンソルを作成
+        pooled_output = torch.zeros_like(tensor)
 
-        # 最大グループIDの取得を修正
+        # 有効なインデックスを取得
         valid_indices = subword_indices[subword_indices != self.SUBWORD_MASK_ID]
         if len(valid_indices) == 0:
             return pooled_output
 
-        # intとして最大値を取得
         max_group_id = int(valid_indices.max().item())
 
-        # バッチ処理を行列演算に変更して効率化
-        for group_id in range(max_group_id + 1):
-            # グループマスクを全バッチで一度に作成
-            group_mask = (subword_indices == group_id).float().unsqueeze(-1)
-            attention_mask_expanded = attention_mask.unsqueeze(-1).to(tensor.dtype)
-            group_mask = group_mask * attention_mask_expanded
+        # バッチごとに処理
+        for b in range(batch_size):
+            # 各グループIDについて処理
+            for group_id in range(max_group_id + 1):
+                # グループに属する位置を特定
+                group_mask = subword_indices[b] == group_id
+                if not group_mask.any():
+                    continue
 
-            if self.pooling_type == "max":
-                # マスク適用と最大値計算を行列演算で実行
-                masked_values = masked_tensor * group_mask
-                masked_values = masked_values + (-1e9 * (1 - group_mask))
-                pooled_values = torch.max(masked_values, dim=1, keepdim=True)[0]
-                # 結果を展開
-                pooled_output = pooled_output + (pooled_values * group_mask)
-            else:  # mean
-                sum_values = torch.sum(masked_tensor * group_mask, dim=1, keepdim=True)
-                count = torch.sum(group_mask, dim=1, keepdim=True).clamp(min=1e-9)
-                pooled_values = sum_values / count
-                pooled_output = pooled_output + (pooled_values * group_mask)
+                # アテンションマスクを適用
+                valid_mask = group_mask & (attention_mask[b] == 1)
+                if not valid_mask.any():
+                    continue
+
+                # グループ内の値を取得
+                group_values = tensor[b][valid_mask]  # (num_tokens, vocab_size)
+
+                if self.pooling_type == "max":
+                    # グループ内で最大値を取る
+                    pooled_values = torch.max(group_values, dim=0)[0]  # (vocab_size,)
+                else:  # mean
+                    # グループ内で平均を取る
+                    pooled_values = torch.mean(group_values, dim=0)  # (vocab_size,)
+
+                # プーリング結果をグループ内の全位置に設定
+                # mask がある部分だけ更新
+                pooled_output[b][group_mask] = pooled_values
 
         return pooled_output
 
