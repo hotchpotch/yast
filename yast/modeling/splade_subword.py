@@ -163,87 +163,12 @@ class SpladeSubword(Splade):
         Returns:
             モデルの出力
         """
-        subword_indices = create_subword_indices(
-            batch_inputs["input_ids"],
-            self.subword_token_ids,
-        )
+
+        # subword_indices = batch_inputs["subword_indices"]
+        subword_indices = batch_inputs.pop("subword_indices")
 
         logits = self.hf_model(**batch_inputs, return_dict=True).logits
         attention_mask = batch_inputs["attention_mask"]
 
         pooled = self.subword_pooling_optimized(logits, subword_indices, attention_mask)
         return self._forward_logits(pooled, attention_mask, batch_size)
-
-
-def create_subword_indices(
-    token_ids: torch.Tensor, subword_token_ids: set
-) -> torch.Tensor:
-    """
-    トークンIDからサブワードインデックスを生成する
-    サブワードを含む単語は同じインデックスでグループ化し、
-    単独トークンは-100として扱う
-
-    Args:
-        token_ids (torch.Tensor): トークンID (batch_size, seq_len)
-        subword_token_ids (set): サブワードとして扱うトークンIDのset
-
-    Returns:
-        torch.Tensor: サブワードインデックス (batch_size, seq_len)
-            -100: 単独トークン（サブワードを含まない単語）やパディング
-            0以上: サブワードを含む単語のグループインデックス
-    """
-    batch_size, seq_len = token_ids.shape
-    subword_indices = torch.full_like(
-        token_ids,
-        -100,  # PADDINGのマスク値
-    )
-
-    current_subword_group_idx = -1
-    for b in range(batch_size):
-        word_start_pos = -1
-        in_subword_sequence = False
-
-        for i in range(seq_len):
-            token_id = token_ids[b, i].item()
-
-            # パディングやマスクされたトークンはスキップ
-            if token_id == -100:
-                continue
-
-            is_subword = token_id in subword_token_ids
-
-            # 新しい単語の開始
-            if not is_subword and not in_subword_sequence:
-                # 前の単語の処理
-                if word_start_pos != -1:
-                    # 単独トークンの場合
-                    if not in_subword_sequence:
-                        subword_indices[b, word_start_pos] = -100
-
-                word_start_pos = i
-                in_subword_sequence = False
-
-            # サブワードシーケンスの開始
-            elif is_subword and not in_subword_sequence:
-                current_subword_group_idx += 1
-                in_subword_sequence = True
-                # 直前のトークンも同じグループに
-                if word_start_pos != -1:
-                    subword_indices[b, word_start_pos : i + 1] = (
-                        current_subword_group_idx
-                    )
-
-            # サブワードシーケンスの途中
-            elif is_subword and in_subword_sequence:
-                subword_indices[b, i] = current_subword_group_idx
-
-            # サブワードシーケンスの終了
-            if not is_subword and in_subword_sequence:
-                word_start_pos = i
-                in_subword_sequence = False
-
-        # 最後の単語の処理
-        if word_start_pos != -1 and not in_subword_sequence:
-            subword_indices[b, word_start_pos] = -100
-
-    return subword_indices

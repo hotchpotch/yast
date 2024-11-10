@@ -71,6 +71,12 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
         self.args = args
         self.total_len = len(self.dataset)
 
+        self.subword_token_ids = set()
+        self.subword_prefix = "##"  # BERTスタイルのサブワードプレフィックス
+        for token in tokenizer.get_vocab():
+            if token.startswith(self.subword_prefix):
+                self.subword_token_ids.add(tokenizer.convert_tokens_to_ids(token))
+
     def load_dataset(self, target_name: str) -> Dataset:
         if target_name.endswith(".jsonl") or target_name.endswith(".json"):
             logger.info(f"Loading JSON dataset from {target_name}")
@@ -147,6 +153,10 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
             max_length=max_length,
             padding=False,
         )
+        item["subword_indices"] = create_subword_indices(
+            torch.tensor(item["input_ids"]).unsqueeze(0), self.subword_token_ids
+        ).squeeze(0)
+
         return item
 
     def create_batch_inputs(
@@ -215,6 +225,16 @@ class GroupCollator(DataCollatorWithPadding):
     def __call__(self, features):
         if isinstance(features[0], list):
             features = sum(features, [])  # type: ignore
+
+        # サブワードインデックスのパディング処理を追加
+        max_length = max(len(f["input_ids"]) for f in features)
+        for feature in features:
+            padding_length = max_length - len(feature["input_ids"])
+            if padding_length > 0:
+                feature["subword_indices"] = (
+                    feature["subword_indices"].tolist() + [-100] * padding_length
+                )
+
         return super().__call__(features)
 
 
@@ -257,3 +277,77 @@ def create_dateset_from_args(
                 raise ValueError(f"Invalid type {target_train_data}")
         target_ds = torch.utils.data.ConcatDataset(target_ds_list)
     return target_ds  # type: ignore
+
+
+def create_subword_indices(
+    token_ids: torch.Tensor, subword_token_ids: set
+) -> torch.Tensor:
+    """
+    トークンIDからサブワードインデックスを生成する
+    サブワードを含む単語は同じインデックスでグループ化し、
+    単独トークンは-100として扱う
+
+    Args:
+        token_ids (torch.Tensor): トークンID (batch_size, seq_len)
+        subword_token_ids (set): サブワードとして扱うトークンIDのset
+
+    Returns:
+        torch.Tensor: サブワードインデックス (batch_size, seq_len)
+            -100: 単独トークン（サブワードを含まない単語）やパディング
+            0以上: サブワードを含む単語のグループインデックス
+    """
+    batch_size, seq_len = token_ids.shape
+    subword_indices = torch.full_like(
+        token_ids,
+        -100,  # PADDINGのマスク値
+    )
+
+    current_subword_group_idx = -1
+    for b in range(batch_size):
+        word_start_pos = -1
+        in_subword_sequence = False
+
+        for i in range(seq_len):
+            token_id = token_ids[b, i].item()
+
+            # パディングやマスクされたトークンはスキップ
+            if token_id == -100:
+                continue
+
+            is_subword = token_id in subword_token_ids
+
+            # 新しい単語の開始
+            if not is_subword and not in_subword_sequence:
+                # 前の単語の処理
+                if word_start_pos != -1:
+                    # 単独トークンの場合
+                    if not in_subword_sequence:
+                        subword_indices[b, word_start_pos] = -100
+
+                word_start_pos = i
+                in_subword_sequence = False
+
+            # サブワードシーケンスの開始
+            elif is_subword and not in_subword_sequence:
+                current_subword_group_idx += 1
+                in_subword_sequence = True
+                # 直前のトークンも同じグループに
+                if word_start_pos != -1:
+                    subword_indices[b, word_start_pos : i + 1] = (
+                        current_subword_group_idx
+                    )
+
+            # サブワードシーケンスの途中
+            elif is_subword and in_subword_sequence:
+                subword_indices[b, i] = current_subword_group_idx
+
+            # サブワードシーケンスの終了
+            if not is_subword and in_subword_sequence:
+                word_start_pos = i
+                in_subword_sequence = False
+
+        # 最後の単語の処理
+        if word_start_pos != -1 and not in_subword_sequence:
+            subword_indices[b, word_start_pos] = -100
+
+    return subword_indices
