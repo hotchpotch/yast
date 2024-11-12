@@ -11,15 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 class SpladeSubword(Splade):
-    POOLING_TYPES = ["max", "mean"]  # 使用可能なプーリングタイプ
-    SUBWORD_MASK_ID = -100  # 無視するサブワードのマスクID
+    POOLING_TYPES = ["max", "mean"]  # Available pooling types
+    SUBWORD_MASK_ID = -100  # ID to ignore subword positions
 
     def __init__(self, hf_model: PreTrainedModel, model_args: ModelArguments):
         super().__init__(hf_model, model_args)
         subword_pooling = model_args.subword_pooling
         if subword_pooling is not None and subword_pooling not in self.POOLING_TYPES:
             raise ValueError(
-                f"無効なプーリングタイプ: {subword_pooling}. {self.POOLING_TYPES} の中から選択してください。"
+                f"Invalid pooling type: {subword_pooling}. Please choose from {self.POOLING_TYPES}"
             )
         self.pooling_type = subword_pooling
 
@@ -30,21 +30,21 @@ class SpladeSubword(Splade):
         subword_indices: torch.Tensor,
     ) -> torch.Tensor:
         """
-        PyTorchのscatter操作を使用してサブワードのlogitsを最適化して集約します。
+        Optimized aggregation of subword logits using PyTorch's scatter operations.
 
         Args:
-            logits (torch.Tensor): splade_max後の [batch_size, vocab_size] 形状のlogitsテンソル。
-            input_ids (torch.Tensor): [batch_size, sequence_length] 形状の入力トークンID。
-            subword_indices (torch.Tensor): [batch_size, sequence_length] 形状のサブワードグループインデックス。
+            logits (torch.Tensor): [batch_size, vocab_size] logits tensor after splade_max.
+            input_ids (torch.Tensor): [batch_size, sequence_length] input token IDs.
+            subword_indices (torch.Tensor): [batch_size, sequence_length] subword group indices.
 
         Returns:
-            torch.Tensor: 集約後のlogitsテンソル。
+            torch.Tensor: Aggregated logits tensor.
         """
         batch_size, vocab_size = logits.size()
         device = logits.device
-        dtype = logits.dtype  # 一貫したデータ型を確保
+        dtype = logits.dtype  # Ensure consistent dtype
 
-        # 有効なサブワード位置のマスクを作成
+        # マスクを作成して有効なサブワード位置を特定
         mask = subword_indices != self.SUBWORD_MASK_ID  # [B, S]
 
         # 有効な位置のインデックスを取得
@@ -52,7 +52,7 @@ class SpladeSubword(Splade):
             as_tuple=False
         )  # [N, 2] 各行は (batch_idx, seq_idx)
         if valid_positions.numel() == 0:
-            return logits  # 集約すべきサブワードがない場合は元のlogitsを返す
+            return logits  # No valid subwords to aggregate
 
         batch_indices = valid_positions[:, 0]  # [N]
         seq_indices = valid_positions[:, 1]  # [N]
@@ -72,19 +72,22 @@ class SpladeSubword(Splade):
             else max_group_tensor
         )
         if max_group < 0:
-            max_group = 0  # マスクされていないグループがない場合をハンドリング
+            max_group = 0  # Handle case where all group_indices are -100, though unlikely due to mask
 
         # グループ識別子を一意にするためにバッチオフセットを加算
         group_offset = batch_indices * (max_group + 1)  # [N]
         unique_group_ids = group_offset + group_indices  # [N]
 
         # ユニークなグループの数を計算
-        num_unique_groups = batch_size * (max_group + 1)  # .item()を削除
+        num_unique_groups = batch_size * (max_group + 1)  # Removed .item()
 
         if self.pooling_type == "max":
             # -infで初期化し、logitsと同じdtypeを設定
             pooled_values = torch.full(
-                (num_unique_groups,), -float("inf"), device=device, dtype=dtype
+                (num_unique_groups,),  # type: ignore
+                -float("inf"),
+                device=device,
+                dtype=dtype,  # type: ignore
             )
             # scatter_reduceを使用して各グループの最大値を計算
             pooled_values = pooled_values.scatter_reduce(
@@ -96,8 +99,8 @@ class SpladeSubword(Splade):
             )
         elif self.pooling_type == "mean":
             # 合計とカウントのテンソルを初期化し、logitsと同じdtypeを設定
-            sum_pooled = torch.zeros(num_unique_groups, device=device, dtype=dtype)
-            count_pooled = torch.zeros(num_unique_groups, device=device, dtype=dtype)
+            sum_pooled = torch.zeros(num_unique_groups, device=device, dtype=dtype)  # type: ignore
+            count_pooled = torch.zeros(num_unique_groups, device=device, dtype=dtype)  # type: ignore
             # 各グループの合計を計算
             sum_pooled = sum_pooled.scatter_add(0, unique_group_ids, selected_logits)
             # 各グループのカウントを計算
@@ -106,13 +109,9 @@ class SpladeSubword(Splade):
             )
             # 平均値を計算（ゼロ除算を防ぐ）
             pooled_values = sum_pooled / torch.clamp(count_pooled, min=1)
-        else:
-            raise ValueError(
-                f"サポートされていないプーリングタイプ: {self.pooling_type}"
-            )
 
         # プールされた値を各トークンにマッピング
-        pooled_values_per_token = pooled_values[unique_group_ids]  # [N]
+        pooled_values_per_token = pooled_values[unique_group_ids]  # [N] # type: ignore
 
         # バッチ内の複数のトークンを処理するためにグローバルなトークンIDを計算
         global_token_ids = batch_indices * vocab_size + token_ids  # [N]
@@ -140,27 +139,23 @@ class SpladeSubword(Splade):
 
     def forward(self, batch_inputs: dict, batch_size: int):
         """
-        モデルのフォワード処理
+        Forward pass of the model.
 
         Args:
-            batch_inputs: 'input_ids', 'attention_mask', 'subword_indices' を含む入力バッチ。
-            batch_size: バッチサイズ。
+            batch_inputs: Input batch containing 'input_ids', 'attention_mask', and 'subword_indices'.
+            batch_size: Size of the batch.
 
         Returns:
-            クエリとドキュメントの表現のタプル。
+            Tuple of query and document representations.
         """
-        # 'subword_indices' をバッチ入力から取り出す
         subword_indices = batch_inputs.pop("subword_indices")
         input_ids = batch_inputs["input_ids"]
 
-        # Hugging Faceモデルを使用して出力を取得
         output = self.hf_model(**batch_inputs, return_dict=True).logits
         attention_mask = batch_inputs["attention_mask"]
 
-        # splade_max 関数を適用
         logits = self.splade_max(output, attention_mask)
 
-        # サブワードの集約処理を実行
         if self.pooling_type is not None:
             logits = self._aggregate_subwords(logits, input_ids, subword_indices)
 
