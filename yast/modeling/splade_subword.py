@@ -1,7 +1,6 @@
 import logging
 
 import torch
-from torch import nn
 from transformers import PreTrainedModel
 
 from ..arguments import ModelArguments
@@ -117,23 +116,41 @@ class SpladeSubword(Splade):
         global_token_ids = batch_indices * vocab_size + token_ids  # [N]
 
         # 各トークンごとの最大プール値を保持するテンソルを初期化（-infで初期化）
-        max_pooled_per_token = torch.full(
+        final_pooled = torch.full(
             (batch_size * vocab_size,), -float("inf"), device=device, dtype=dtype
         )
-        # scatter_reduceを使用して各トークンの最大プール値を計算
-        max_pooled_per_token = max_pooled_per_token.scatter_reduce(
-            dim=0,
-            index=global_token_ids,
-            src=pooled_values_per_token,
-            reduce="amax",
-            include_self=True,
-        )
 
-        # テンソルを [batch_size, vocab_size] にリシェイプ
-        max_pooled_per_token = max_pooled_per_token.view(batch_size, vocab_size)
+        if self.pooling_type == "max":
+            # MaxPoolingの場合は最大値を使用
+            final_pooled = final_pooled.scatter_reduce(
+                dim=0,
+                index=global_token_ids,
+                src=pooled_values_per_token,
+                reduce="amax",
+                include_self=True,
+            )
+            final_pooled = final_pooled.view(batch_size, vocab_size)
+            # 元のlogitsと最大値を取る
+            new_logits = torch.maximum(logits, final_pooled)
+        else:  # mean
+            # MeanPoolingの場合は平均値を直接使用
+            temp_sum = torch.zeros_like(final_pooled)
+            temp_count = torch.zeros_like(final_pooled)
 
-        # 元のlogitsとプールされた値の最大値を取って更新
-        new_logits = torch.maximum(logits, max_pooled_per_token)
+            # 値の合計とカウントを集計
+            temp_sum.scatter_add_(0, global_token_ids, pooled_values_per_token)
+            temp_count.scatter_add_(
+                0, global_token_ids, torch.ones_like(pooled_values_per_token)
+            )
+
+            # 最終的な平均を計算
+            final_pooled = (temp_sum / temp_count.clamp(min=1.0)).view(
+                batch_size, vocab_size
+            )
+
+            # サブワードがある位置のみ平均値で更新
+            subword_mask = (temp_count > 0).view(batch_size, vocab_size)
+            new_logits = torch.where(subword_mask, final_pooled, logits)
 
         return new_logits
 
