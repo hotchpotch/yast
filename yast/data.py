@@ -8,6 +8,7 @@ import importlib
 import logging
 import os
 import random
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import List, Type, cast
@@ -79,6 +80,7 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
                 if token.startswith(subword_prefix):
                     self.subword_token_ids.add(tokenizer.convert_tokens_to_ids(token))
             logger.info(f"Subword token count: {len(self.subword_token_ids)}")
+            self._set_noise_token_ids(args.noise_tokens_for_subword)
 
     def load_dataset(self, target_name: str) -> Dataset:
         if target_name.endswith(".jsonl") or target_name.endswith(".json"):
@@ -158,7 +160,10 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
         )
         if len(self.subword_token_ids) > 0:
             item["subword_indices"] = create_subword_indices(
-                torch.tensor(item["input_ids"]).unsqueeze(0), self.subword_token_ids
+                torch.tensor(item["input_ids"]).unsqueeze(0),
+                self.subword_token_ids,
+                self.noise_token_ids,
+                self.tokenizer,
             ).squeeze(0)
 
         return item
@@ -223,6 +228,30 @@ class DatasetForSpladeTraining(torch.utils.data.Dataset):
             query, pos_texts, neg_texts, pos_scores, neg_scores
         )
 
+    def _set_noise_token_ids(self, noise_tokens: None | str | list[str]) -> None:
+        # FIXME: 実装を trainer から copy していてよくない...
+        if isinstance(noise_tokens, str):
+            noise_tokens = re.split(r"\s+", noise_tokens)
+        elif noise_tokens is None:
+            noise_tokens = []
+        if len(noise_tokens) > 0:
+            noise_tokens = list(set(noise_tokens))
+            tokenizer = self.tokenizer
+            token_ids: list[int] = tokenizer.convert_tokens_to_ids(noise_tokens)  # type: ignore
+            if len(token_ids) != len(noise_tokens):
+                missing_tokens = set(noise_tokens) - set(
+                    tokenizer.convert_ids_to_tokens(token_ids)  # type: ignore
+                )
+                raise ValueError(
+                    f"Token(s) {missing_tokens} are not in the tokenizer's vocabulary."
+                )
+            logger.info(
+                f"target noise tokens ({len(token_ids)}): {' '.join(noise_tokens)}"
+            )
+            self.noise_token_ids = set(token_ids)
+        else:
+            self.noise_token_ids = set()
+
 
 @dataclass
 class GroupCollator(DataCollatorWithPadding):
@@ -286,7 +315,7 @@ def create_dateset_from_args(
 
 
 def create_subword_indices(
-    token_ids: torch.Tensor, subword_token_ids: set
+    token_ids: torch.Tensor, subword_token_ids: set, noise_token_ids: set, tokenizer
 ) -> torch.Tensor:
     """
     トークンIDからサブワードインデックスを生成する
@@ -296,6 +325,7 @@ def create_subword_indices(
     Args:
         token_ids (torch.Tensor): トークンID (batch_size, seq_len)
         subword_token_ids (set): サブワードとして扱うトークンIDのset
+        noise_token_ids (set): ノイズトークンとして扱うトークンIDのset
 
     Returns:
         torch.Tensor: サブワードインデックス (batch_size, seq_len)
@@ -309,6 +339,7 @@ def create_subword_indices(
     )
 
     current_subword_group_idx = -1
+    start_word_token_id = -1
     for b in range(batch_size):
         word_start_pos = -1
         in_subword_sequence = False
@@ -332,16 +363,23 @@ def create_subword_indices(
 
                 word_start_pos = i
                 in_subword_sequence = False
+                start_word_token_id = token_id
 
             # サブワードシーケンスの開始
             elif is_subword and not in_subword_sequence:
                 current_subword_group_idx += 1
                 in_subword_sequence = True
-                # 直前のトークンも同じグループに
                 if word_start_pos != -1:
-                    subword_indices[b, word_start_pos : i + 1] = (
-                        current_subword_group_idx
-                    )
+                    if start_word_token_id not in noise_token_ids:
+                        # start_word_token_id がノイズトークンでない場合
+                        # start_token もサブワードグループに含める
+                        subword_indices[b, word_start_pos : i + 1] = (
+                            current_subword_group_idx
+                        )
+                    else:
+                        # start_token_id がノイズトークンの場合、その start_token は無視する
+                        subword_indices[b, word_start_pos] = -100
+                        subword_indices[b, i] = current_subword_group_idx
 
             # サブワードシーケンスの途中
             elif is_subword and in_subword_sequence:

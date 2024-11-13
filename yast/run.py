@@ -102,8 +102,14 @@ def main():
 
     # override
     if model_args.subword_pooling and not data_args.create_subword_indices:
-        logging.info("Set create_subword_indices to True")
+        logging.info("[override]  Set create_subword_indices to True")
         data_args.create_subword_indices = True
+        if (
+            training_args.noise_tokens is not None
+            and data_args.noise_tokens_for_subword is None
+        ):
+            logger.info("[override] Set noise_tokens_for_subwords")
+            data_args.noise_tokens_for_subword = training_args.noise_tokens
     logger.info("Training/evaluation parameters %s", training_args)
     logger.info("Model parameters %s", model_args)
     logger.info("Data parameters %s", data_args)

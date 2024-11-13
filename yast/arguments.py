@@ -149,6 +149,10 @@ class DataArguments:
         default=False,
         metadata={"help": "Create subword indices for splade model"},
     )
+    noise_tokens_for_subword: None | str | list[str] = field(
+        default=None,
+        metadata={"help": "Noise tokens for subwords"},
+    )
 
     def __post_init__(self):
         # validation
