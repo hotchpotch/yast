@@ -17,18 +17,18 @@ DS_SPIT = "train"
 NEG_SCORE_TH = 0.3
 POS_SCORE_TH = 0.7
 NEG_FILTER_COUNT = 7
+NEG_POS_SCORE_TH = 0.95
+
+TOP_100_SAMPLING_COUNT = 4  # top100 から hard negative としてサンプリングする数
 
 
-def _map_filter_score(example, neg_score_th: float, pos_score_th: float):
-    # neg_score: list[float] = example["neg.score"]
-    # neg_score_filtered_index = [
-    #     i for i, score in enumerate(neg_score) if score < neg_score_th
-    # ]
-    # # same pos_score
-    # pos_score = example["pos.score"]
-    # pos_score_filtered_index = [
-    #     i for i, score in enumerate(pos_score) if score > pos_score_th
-    # ]
+def _map_score_with_hard_positives(
+    example,
+    neg_score_th: float,
+    pos_score_th: float,
+    neg_pos_score_th: float,
+    hard_positives: bool,
+):
     neg_score_top100 = example[
         "score.bge-reranker-v2-m3.neg_ids.japanese-splade-base-v1-mmarco-only.top100"
     ]
@@ -46,12 +46,28 @@ def _map_filter_score(example, neg_score_th: float, pos_score_th: float):
         i for i, score in enumerate(pos_score) if score > pos_score_th
     ]
 
+    # hard positives はまずは、neg.other100 から取得する
+    hard_positives_ids = example["neg_ids.japanese-splade-base-v1-mmarco-only.other100"]
+    hard_positives_scores = neg_score_other100
+    hard_positives_score_filtered_index = [
+        i for i, score in enumerate(hard_positives_scores) if score > neg_pos_score_th
+    ]
+
+    # top100 では hard_positives としては弱いので、使わない
+    # if len(hard_positives_score_filtered_index) == 0:
+    #     # neg.other100 に hard positives に該当するスコアがない場合、top100 から取得する
+    #     hard_positives_ids = example[
+    #         "neg_ids.japanese-splade-base-v1-mmarco-only.top100"
+    #     ]
+    #     hard_positives_scores = neg_score_top100
+    #     hard_positives_score_filtered_index = [
+    #         i
+    #         for i, score in enumerate(hard_positives_scores)
+    #         if score > neg_pos_score_th
+    #     ]
+
     data = {
         **example,
-        # "neg.score": [neg_score[i] for i in neg_score_filtered_index],
-        # "neg": [example["neg"][i] for i in neg_score_filtered_index],
-        # "pos.score": [pos_score[i] for i in pos_score_filtered_index],
-        # "pos": [example["pos"][i] for i in pos_score_filtered_index],
         "neg.score.top100": [
             neg_score_top100[i] for i in neg_score_top100_filtered_index
         ],
@@ -69,14 +85,20 @@ def _map_filter_score(example, neg_score_th: float, pos_score_th: float):
         "pos.score": [pos_score[i] for i in pos_score_filtered_index],
         "pos": [example["pos_ids"][i] for i in pos_score_filtered_index],
     }
-    # XXX:
-    # posは、neg_score_top100 から > 0.95 のものでサンプリングしても良いのでは?
-
-    if len(pos_score_filtered_index) == 0:
+    if hard_positives and len(hard_positives_score_filtered_index) > 0:
+        # hard_positives flag がある
+        # かつ hard_positives としてふさわしいスコアがある場合、pos.score, pos を neg に置き換える
+        data["pos.score"] = [
+            hard_positives_scores[i] for i in hard_positives_score_filtered_index
+        ]
+        data["pos"] = [
+            hard_positives_ids[i] for i in hard_positives_score_filtered_index
+        ]
+    elif len(pos_score_filtered_index) == 0:
         # neg_score_top100 の最大値と、その index を取得
         max_score = max(neg_score_top100)
         max_score_index = neg_score_top100.index(max_score)
-        if max_score >= 0.9:
+        if max_score >= neg_pos_score_th:
             # pos が閾値以上のものがなく、かつ十分なスコアが neg にある場合は、それを pos とする
             data["pos"] = [
                 example["neg_ids.japanese-splade-base-v1-mmarco-only.top100"][
@@ -84,7 +106,13 @@ def _map_filter_score(example, neg_score_th: float, pos_score_th: float):
                 ]
             ]
             data["pos.score"] = [max_score]
-
+        elif len(hard_positives_score_filtered_index) > 0:
+            # neg_score_top100 にも hard_positives にも該当するスコアがない場合、
+            # hard_positives_score_filtered_index から pos を1つランダムに追加する
+            hard_positve_index = random.choice(hard_positives_score_filtered_index)
+            max_score = hard_positives_scores[hard_positve_index]
+            data["pos.score"] = [max_score]
+            data["pos"] = [hard_positives_ids[hard_positve_index]]
     return data
 
 
@@ -102,33 +130,42 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
         args: DataArguments,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     ):
-
         self.query_max_len = args.dataset_options.get("query_max_len", 256)
         self.doc_max_len = args.dataset_options.get("doc_max_len", 1024)
-        train_data = args.train_data
 
         dataset_options = args.dataset_options
         self.binarize_label: bool = dataset_options.get("binarize_label", False)
+        self.hard_positives: bool = dataset_options.get("hard_positives", False)
         dataset_name = dataset_options.get("dataset_name", "mmarco")
         logger.info(f"Initializing {dataset_name} hard_negative dataset")
+        logger.info(f"binarize_label: {self.binarize_label}")
+        logger.info(f"hard_positives: {self.hard_positives}")
 
         query_ds_name = f"{dataset_name}-dataset"
         collection_ds_name = f"{dataset_name}-collection"
 
-        # lang = train_data["lang"]
-        # reranker_name = train_data["reranker"]
-        neg_score_th = train_data.get("neg_score_th", NEG_SCORE_TH)
-        pos_score_th = train_data.get("pos_score_th", POS_SCORE_TH)
-        net_filter_count = train_data.get("net_filter_count", NEG_FILTER_COUNT)
+        neg_score_th = dataset_options.get("neg_score_th", NEG_SCORE_TH)
+        pos_score_th = dataset_options.get("pos_score_th", POS_SCORE_TH)
+        neg_pos_thcore_th = dataset_options.get("neg_pos_thcore_th", NEG_POS_SCORE_TH)
+        net_filter_count = dataset_options.get("net_filter_count", NEG_FILTER_COUNT)
+
+        self.top_100_sampling_count = dataset_options.get(
+            "top_100_sampling_count", TOP_100_SAMPLING_COUNT
+        )
 
         ds = load_dataset(HADR_NEGATIVE_SCORE_DS, query_ds_name, split=DS_SPIT)
         self.collection_ds = load_dataset(
             HADR_NEGATIVE_SCORE_DS, collection_ds_name, split=DS_SPIT
         )
         ds = ds.map(
-            _map_filter_score,
+            _map_score_with_hard_positives,
             num_proc=11,  # type: ignore
-            fn_kwargs={"neg_score_th": neg_score_th, "pos_score_th": pos_score_th},
+            fn_kwargs={
+                "neg_score_th": neg_score_th,
+                "pos_score_th": pos_score_th,
+                "neg_pos_score_th": neg_pos_thcore_th,
+                "hard_positives": self.hard_positives,
+            },
         )  # type: ignore
         ds = ds.filter(
             _filter_score, num_proc=11, fn_kwargs={"net_filter_count": net_filter_count}
@@ -142,16 +179,17 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
         return text  # type: ignore
 
     def __getitem__(self, item) -> list[dict]:
+        group_size = self.args.train_group_size
         query = self.dataset[item]["anc"]
+
         pos_ids = self.dataset[item]["pos"]
         pos_ids_score = self.dataset[item]["pos.score"]
-        # neg_ids = self.dataset[item]["neg"]
-        # neg_ids_score = self.dataset[item]["neg.score"]
+
         neg_ids_top100 = self.dataset[item]["neg.top100"]
         neg_ids_score_top100 = self.dataset[item]["neg.score.top100"]
 
         # N をneg_ids_top100からrandom sampling
-        top_100_count = 4
+        top_100_count = self.top_100_sampling_count
         if len(neg_ids_top100) < top_100_count:
             top_100_count = len(neg_ids_top100)
         neg_ids_top100_sampled = random.sample(neg_ids_top100, top_100_count)
@@ -160,8 +198,7 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
             for id_ in neg_ids_top100_sampled
         ]
 
-        # 7 じゃなくて、train_group_size - 1 にする
-        other_100_count = 7 - top_100_count
+        other_100_count = group_size - top_100_count - 1
         neg_ids_other100 = self.dataset[item]["neg.other100"]
         neg_ids_score_other100 = self.dataset[item]["neg.score.other100"]
         if len(neg_ids_other100) < other_100_count:
