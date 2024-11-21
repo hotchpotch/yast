@@ -97,7 +97,7 @@ def regularize_L2(batch_tensor: torch.Tensor) -> torch.Tensor:
 
 
 def regularize_flops_l1_weighted(
-    batch_tensor: torch.Tensor, flops_weight: float = 0.3, l1_weight: float = 0.7
+    batch_tensor: torch.Tensor, flops_weight: float = 0.7, l1_weight: float = 0.3
 ) -> torch.Tensor:
     """
     Combines FLOPs and L1 regularization with adjustable weights.
@@ -223,6 +223,122 @@ def regularize_entropy_balanced(
     return torch.abs(entropy - target_entropy)
 
 
+def regularize_grouped_magnitude(
+    batch_tensor: torch.Tensor, group_size: int = 8, threshold: float = 0.1
+) -> torch.Tensor:
+    """
+    Group-wise magnitude regularization that promotes structured sparsity.
+    Similar to structured pruning in neural networks.
+
+    Merits:
+    - Promotes structured sparsity within groups
+    - More efficient for actual computation
+    - Better preserves semantic relationships
+
+    Demerits:
+    - Group size needs to be tuned
+    - May not work well with very small dimensions
+
+    Args:
+    batch_tensor: Input tensor of shape (batch_size, dim)
+    group_size: Size of groups for structured sparsity
+    threshold: Threshold for magnitude comparison
+
+    Returns:
+    torch.Tensor: Group magnitude regularization term
+    """
+    batch_size, dim = batch_tensor.shape
+    num_groups = dim // group_size
+
+    # Reshape into groups
+    grouped_tensor = batch_tensor.view(batch_size, num_groups, group_size)
+
+    # Calculate group-wise magnitudes
+    group_magnitudes = torch.norm(grouped_tensor, p=2, dim=2)
+
+    # Apply soft thresholding to groups
+    threshold_penalty = torch.relu(group_magnitudes - threshold)
+
+    return threshold_penalty.mean()
+
+
+def regularize_topk_entropy(
+    batch_tensor: torch.Tensor, k: int = 256, temperature: float = 1.0
+) -> torch.Tensor:
+    """
+    Top-k sparse entropy regularization that maintains semantic diversity.
+    Combines benefits of top-k sparsity with entropy-based distribution control.
+
+    Merits:
+    - Controls exact number of non-zero elements
+    - Maintains semantic diversity through entropy
+    - More predictable sparsity patterns
+
+    Demerits:
+    - k needs to be chosen carefully
+    - Computationally more expensive due to sorting
+
+    Args:
+    batch_tensor: Input tensor of shape (batch_size, dim)
+    k: Number of top elements to consider
+    temperature: Temperature for softmax
+
+    Returns:
+    torch.Tensor: Top-k entropy regularization term
+    """
+    magnitudes = torch.abs(batch_tensor)
+
+    # Get top-k values and compute soft distribution
+    top_k_values, _ = torch.topk(magnitudes, k=k, dim=1)
+    soft_distribution = torch.softmax(top_k_values / temperature, dim=1)
+
+    # Compute entropy of top-k distribution
+    entropy = -(soft_distribution * torch.log(soft_distribution + 1e-10)).sum(dim=1)
+
+    return -entropy.mean()  # Minimize negative entropy
+
+
+def regularize_adaptive_threshold(
+    batch_tensor: torch.Tensor,
+    init_threshold: float = 0.1,
+    target_density: float = 0.05,
+    momentum: float = 0.9,
+) -> torch.Tensor:
+    """
+    Adaptive threshold regularization that maintains target density.
+    Automatically adjusts threshold to maintain desired sparsity level.
+
+    Merits:
+    - Automatically maintains target sparsity
+    - Smooth adaptation of threshold
+    - More stable than fixed threshold approaches
+
+    Demerits:
+    - Requires careful tuning of momentum
+    - May take time to stabilize
+
+    Args:
+    batch_tensor: Input tensor of shape (batch_size, dim)
+    init_threshold: Initial threshold value
+    target_density: Target density (1 - sparsity)
+    momentum: Momentum for threshold adaptation
+
+    Returns:
+    torch.Tensor: Adaptive threshold regularization term
+    """
+    magnitudes = torch.abs(batch_tensor)
+    current_density = (magnitudes > init_threshold).float().mean()
+
+    # Compute threshold adjustment
+    density_error = current_density - target_density
+    threshold_adjustment = torch.sign(density_error) * torch.abs(density_error).sqrt()
+
+    # Apply soft thresholding with current threshold
+    penalty = torch.relu(magnitudes - init_threshold)
+
+    return penalty.mean() * (1.0 + threshold_adjustment)
+
+
 regularizers: dict[
     Literal[
         "mean_squared",
@@ -233,6 +349,10 @@ regularizers: dict[
         "dynamic_sparsity",
         "magnitude_threshold",
         "entropy_balanced",
+        "dynamic_sparsity",
+        "grouped_magnitude",
+        "topk_entropy",
+        "adaptive_threshold",
     ],
     Callable[Concatenate[torch.Tensor, ...], torch.Tensor],
 ] = {
@@ -244,4 +364,7 @@ regularizers: dict[
     "dynamic_sparsity": regularize_dynamic_sparsity,
     "magnitude_threshold": regularize_magnitude_threshold,
     "entropy_balanced": regularize_entropy_balanced,
+    "grouped_magnitude": regularize_grouped_magnitude,
+    "topk_entropy": regularize_topk_entropy,
+    "adaptive_threshold": regularize_adaptive_threshold,
 }

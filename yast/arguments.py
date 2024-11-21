@@ -70,11 +70,37 @@ class SpladeTrainingArguments(TrainingArguments):
             "help": "Document lambda warmup steps. If 0 < value < 1, treated as ratio of total steps. Otherwise, absolute step count."
         },
     )
-    regularizer_query: Literal["mean_squared", "flops", "L1", "L2"] = field(
+    regularizer_query: Literal[
+        "mean_squared",
+        "flops",
+        "L1",
+        "L2",
+        "flops_l1_weighted",
+        "dynamic_sparsity",
+        "magnitude_threshold",
+        "entropy_balanced",
+        "dynamic_sparsity",
+        "grouped_magnitude",
+        "topk_entropy",
+        "adaptive_threshold",
+    ] = field(
         default="L1",
         metadata={},
     )
-    regularizer_doc: Literal["mean_squared", "flops", "L1", "L2"] = field(
+    regularizer_doc: Literal[
+        "mean_squared",
+        "flops",
+        "L1",
+        "L2",
+        "flops_l1_weighted",
+        "dynamic_sparsity",
+        "magnitude_threshold",
+        "entropy_balanced",
+        "dynamic_sparsity",
+        "grouped_magnitude",
+        "topk_entropy",
+        "adaptive_threshold",
+    ] = field(
         default="flops",
         metadata={},
     )
