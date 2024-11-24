@@ -28,12 +28,11 @@ def _map_score_with_hard_positives(
     pos_score_th: float,
     neg_pos_score_th: float,
     hard_positives: bool,
+    target_name: str = "japanese-splade-base-v1-mmarco-only",
 ):
-    neg_score_top100 = example[
-        "score.bge-reranker-v2-m3.neg_ids.japanese-splade-base-v1-mmarco-only.top100"
-    ]
+    neg_score_top100 = example[f"score.bge-reranker-v2-m3.neg_ids.{target_name}.top100"]
     neg_score_other100 = example[
-        "score.bge-reranker-v2-m3.neg_ids.japanese-splade-base-v1-mmarco-only.other100"
+        f"score.bge-reranker-v2-m3.neg_ids.{target_name}.other100"
     ]
     pos_score = example["score.bge-reranker-v2-m3.pos_ids"]
     neg_score_top100_filtered_index = [
@@ -47,7 +46,7 @@ def _map_score_with_hard_positives(
     ]
 
     # hard positives はまずは、neg.other100 から取得する
-    hard_positives_ids = example["neg_ids.japanese-splade-base-v1-mmarco-only.other100"]
+    hard_positives_ids = example[f"neg_ids.{target_name}.other100"]
     hard_positives_scores = neg_score_other100
     hard_positives_score_filtered_index = [
         i for i, score in enumerate(hard_positives_scores) if score > neg_pos_score_th
@@ -57,7 +56,7 @@ def _map_score_with_hard_positives(
     # if len(hard_positives_score_filtered_index) == 0:
     #     # neg.other100 に hard positives に該当するスコアがない場合、top100 から取得する
     #     hard_positives_ids = example[
-    #         "neg_ids.japanese-splade-base-v1-mmarco-only.top100"
+    #         f"neg_ids.{target_name}.top100"
     #     ]
     #     hard_positives_scores = neg_score_top100
     #     hard_positives_score_filtered_index = [
@@ -72,14 +71,14 @@ def _map_score_with_hard_positives(
             neg_score_top100[i] for i in neg_score_top100_filtered_index
         ],
         "neg.top100": [
-            example["neg_ids.japanese-splade-base-v1-mmarco-only.top100"][i]
+            example[f"neg_ids.{target_name}.top100"][i]
             for i in neg_score_top100_filtered_index
         ],
         "neg.score.other100": [
             neg_score_other100[i] for i in neg_score_other100_filtered_index
         ],
         "neg.other100": [
-            example["neg_ids.japanese-splade-base-v1-mmarco-only.other100"][i]
+            example[f"neg_ids.{target_name}.other100"][i]
             for i in neg_score_other100_filtered_index
         ],
         "pos.score": [pos_score[i] for i in pos_score_filtered_index],
@@ -100,11 +99,7 @@ def _map_score_with_hard_positives(
         max_score_index = neg_score_top100.index(max_score)
         if max_score >= neg_pos_score_th:
             # pos が閾値以上のものがなく、かつ十分なスコアが neg にある場合は、それを pos とする
-            data["pos"] = [
-                example["neg_ids.japanese-splade-base-v1-mmarco-only.top100"][
-                    max_score_index
-                ]
-            ]
+            data["pos"] = [example[f"neg_ids.{target_name}.top100"][max_score_index]]
             data["pos.score"] = [max_score]
         elif len(hard_positives_score_filtered_index) > 0:
             # neg_score_top100 にも hard_positives にも該当するスコアがない場合、
@@ -136,10 +131,14 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
         dataset_options = args.dataset_options
         self.binarize_label: bool = dataset_options.get("binarize_label", False)
         self.hard_positives: bool = dataset_options.get("hard_positives", False)
+        self.target_name: str = dataset_options.get(
+            "target_name", "japanese-splade-base-v1-mmarco-only"
+        )
         dataset_name = dataset_options.get("dataset_name", "mmarco")
         logger.info(f"Initializing {dataset_name} hard_negative dataset")
         logger.info(f"binarize_label: {self.binarize_label}")
         logger.info(f"hard_positives: {self.hard_positives}")
+        logger.info(f"target_name: {self.target_name}")
 
         query_ds_name = f"{dataset_name}-dataset"
         collection_ds_name = f"{dataset_name}-collection"
@@ -165,6 +164,7 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
                 "pos_score_th": pos_score_th,
                 "neg_pos_score_th": neg_pos_thcore_th,
                 "hard_positives": self.hard_positives,
+                "target_name": self.target_name,
             },
         )  # type: ignore
         ds = ds.filter(
