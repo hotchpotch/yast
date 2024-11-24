@@ -138,11 +138,15 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
         self.target_model_name: str = dataset_options.get(
             "target_model_name", "japanese-splade-base-v1-mmarco-only"
         )
+        self.query_column_name: str = dataset_options.get("query_column_name", "anc")
+        self.doc_column_name: str = dataset_options.get("doc_column_name", "text")
         dataset_name = dataset_options.get("dataset_name", "mmarco")
         logger.info(f"Initializing {dataset_name} hard_negative dataset")
         logger.info(f"binarize_label: {self.binarize_label}")
         logger.info(f"hard_positives: {self.hard_positives}")
         logger.info(f"target_model_name: {self.target_model_name}")
+        logger.info(f"query_column_name: {self.query_column_name}")
+        logger.info(f"doc_column_name: {self.doc_column_name}")
 
         query_ds_name = f"{dataset_name}-dataset"
         collection_ds_name = f"{dataset_name}-collection"
@@ -179,12 +183,12 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
         super().__init__(args, tokenizer, ds)  # type: ignore
 
     def get_collection_text(self, doc_id: int) -> str:
-        text = self.collection_ds[doc_id]["text"]  # type: ignore
+        text = self.collection_ds[doc_id][self.doc_column_name]  # type: ignore
         return text  # type: ignore
 
     def __getitem__(self, item) -> list[dict]:
         group_size = self.args.train_group_size
-        query = self.dataset[item]["anc"]
+        query = self.dataset[item][self.query_column_name]
 
         pos_ids = self.dataset[item]["pos"]
         pos_ids_score = self.dataset[item]["pos.score"]
