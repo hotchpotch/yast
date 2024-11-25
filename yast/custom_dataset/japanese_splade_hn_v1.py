@@ -1,7 +1,7 @@
 import logging
 import random
 
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from ..arguments import DataArguments
@@ -179,6 +179,27 @@ class JapaneseSpladeHardNegativesV1(DatasetForSpladeTraining):
             _filter_score, num_proc=11, fn_kwargs={"net_filter_count": net_filter_count}
         )  # type: ignore
         logger.info(f"Filtered dataset size: {len(ds)}")
+
+        aug_factor = dataset_options.get("aug_factor", 1.0)
+        n = int(dataset_options.get("n", 0))
+        if aug_factor != 1.0:
+            n = int(len(ds) * (aug_factor))
+            logging.info(
+                f"Augmenting dataset with factor aug_factor={aug_factor}, n={n}"
+            )
+        if n > len(ds):
+            logger.info(f"Expanding dataset from {len(ds)} to {n}")
+            ds_expand = []
+            c = n // len(ds)
+            r = n % len(ds)
+            for _ in range(c):
+                ds_expand.append(ds.shuffle(seed=42))
+            ds_expand.append(ds.shuffle(seed=42).select(range(r)))  # type: ignore
+            ds = concatenate_datasets(ds_expand)
+            assert len(ds) == n
+        elif n > 0:
+            logger.info(f"Shuffling and selecting first {n} samples from dataset")
+            ds = ds.shuffle(seed=42).select(range(n))  # type: ignore
 
         super().__init__(args, tokenizer, ds)  # type: ignore
 
