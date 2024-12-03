@@ -4,6 +4,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+"""
+SPLADE 学習のためのロス実装
+"""
+
 
 class KLDivLoss(nn.Module):
     def __init__(
@@ -231,6 +235,85 @@ class WeightedMarginLoss(nn.Module):
         return loss
 
 
+class WeightedMarginLossWithLog(nn.Module):
+    def __init__(
+        self,
+        margin: float = 0.5,
+        max_negative_teacher: float = 0.3,
+        min_positive_teacher: float = 0.7,
+        eps: float = 1e-6,
+    ):
+        super().__init__()
+        """
+        margin = 0.5  # これは対数空間での差0.35に対して適切
+        positive の内積の統計量は
+        mean: 10.03 
+          log(10.03) = 2.31
+        std: 1.566
+
+        negatives の内積の統計量は
+        mean: 7.11
+          log(7.11) = 1.96
+        std: 1.26
+        """
+        self.base_margin = margin
+        self.max_negative_teacher = max_negative_teacher
+        self.min_positive_teacher = min_positive_teacher
+        self.eps = eps
+
+    def get_margin(
+        self, teacher_pos_scores: torch.Tensor, teacher_neg_scores: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        positive、negative両方の教師スコアに基づいてマージンを調整
+
+        Args:
+            teacher_pos_scores: positive例の教師スコア (batch_size, 1)
+            teacher_neg_scores: negative例の教師スコア (batch_size, num_negatives)
+        """
+        # Positiveスコアの正規化 (0.7-1.0 → 0-1)
+        pos_confidence = (teacher_pos_scores - self.min_positive_teacher) / (
+            1.0 - self.min_positive_teacher
+        )
+
+        # Negativeスコアの正規化 (0-0.3 → 0-1)
+        neg_confidence = teacher_neg_scores / self.max_negative_teacher
+
+        # Positiveの確信度が高いほどマージンを大きく (1.0-1.2の範囲)
+        pos_scale = 1.0 + (pos_confidence * 0.2)
+
+        # Negativeの確信度が低いほどマージンを大きく (0.9-1.1の範囲)
+        neg_scale = 1.1 - (neg_confidence * 0.2)
+
+        # 両方のスケールを組み合わせる
+        margin_scale = pos_scale * neg_scale
+
+        return self.base_margin * margin_scale
+
+    def forward(self, scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        if scores.shape != labels.shape:
+            raise ValueError(
+                f"Shape mismatch: scores {scores.shape} != labels {labels.shape}"
+            )
+
+        log_scores = torch.log(scores + self.eps)
+
+        positives = log_scores[:, 0].unsqueeze(1)
+        negatives = log_scores[:, 1:]
+
+        # 教師スコアを分離
+        teacher_pos = labels[:, 0].unsqueeze(1)  # positiveの教師スコア
+        teacher_neg = labels[:, 1:]  # negativeの教師スコア
+
+        # 両方の教師スコアを使ってマージンを計算
+        weighted_margin = self.get_margin(teacher_pos, teacher_neg)
+
+        margin_diffs = negatives - positives + weighted_margin
+        loss = F.relu(margin_diffs).mean()
+
+        return loss
+
+
 class LossWithWeight(TypedDict):
     loss_fn: nn.Module
     weight: float
@@ -246,4 +329,5 @@ losses: dict[str, Type[nn.Module]] = {
     "teacher_guided_margin": TeacherGuidedMarginLoss,
     "soft_ce": SoftCrossEntropyLoss,
     "weighted_margin": WeightedMarginLoss,
+    "weighted_margin_log": WeightedMarginLossWithLog,
 }
