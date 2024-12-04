@@ -98,7 +98,10 @@ class SpladeTrainer(Trainer):
         elif isinstance(training_loss, dict):
             for loss_name, loss_values in training_loss.items():
                 if loss_klass := losses.get(loss_name):
-                    loss_fn = loss_klass(**loss_values.get("loss_kwargs", {}))
+                    loss_kwargs = loss_values.get("loss_kwargs", {})
+                    if len(loss_kwargs) > 0:
+                        logger.info(f"loss_kwargs for {loss_name}: {loss_kwargs}")
+                    loss_fn = loss_klass(**loss_kwargs)
                     loss_with_args: LossWithWeight = {
                         "loss_fn": loss_fn,
                         "weight": loss_values.get("weight", 1.0),
