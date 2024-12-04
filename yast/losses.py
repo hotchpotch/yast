@@ -41,12 +41,13 @@ class KLDivLoss(nn.Module):
         return loss
 
 
-class BCELoss(nn.Module):
+class WeightedBCELoss(nn.Module):
     def __init__(
         self,
         reduction: Literal["mean", "sum", "none"] = "mean",
         temperature: float = 1.0,
-        scaling_factor: float = 20.0,
+        scaling_factor: float = 25.0,
+        pos_weight: float = 8.0,
     ) -> None:
         super().__init__()
 
@@ -57,7 +58,10 @@ class BCELoss(nn.Module):
 
         self.temperature = temperature
         self.scaling_factor = scaling_factor
-        self.bce = nn.BCEWithLogitsLoss(reduction=reduction)
+        # pos_weightを使ってBCEWithLogitsLossを初期化
+        self.bce = nn.BCEWithLogitsLoss(
+            reduction=reduction, pos_weight=torch.tensor([pos_weight])
+        )
 
     def forward(self, scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         if scores.shape != labels.shape:
@@ -71,10 +75,7 @@ class BCELoss(nn.Module):
         if not torch.isfinite(labels).all():
             raise ValueError("labels contains inf or nan")
 
-        # スケーリングと温度の適用
         scaled_scores = (scores / self.scaling_factor) / self.temperature
-
-        # BCELossの計算（温度補正を含む）
         loss = self.bce(scaled_scores, labels) * (self.temperature**2)
 
         return loss
@@ -386,7 +387,6 @@ class LossWithWeight(TypedDict):
 
 losses: dict[str, Type[nn.Module]] = {
     "cross_entropy": nn.CrossEntropyLoss,
-    "bce": BCELoss,
     "mse": nn.MSELoss,
     "kl_div": KLDivLoss,
     "margin_mse": MarginMSELoss,
@@ -395,4 +395,5 @@ losses: dict[str, Type[nn.Module]] = {
     "soft_ce": SoftCrossEntropyLoss,
     "weighted_margin": WeightedMarginLoss,
     "weighted_margin_log": WeightedMarginLossWithLog,
+    "weighted_bce": WeightedBCELoss,
 }
