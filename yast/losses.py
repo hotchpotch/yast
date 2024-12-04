@@ -14,8 +14,12 @@ class KLDivLoss(nn.Module):
         self,
         reduction: Literal["batchmean", "sum", "none"] = "batchmean",
         temperature: float = 1.0,
-    ):
+    ) -> None:
         super().__init__()
+
+        if temperature <= 0:
+            raise ValueError(f"Temperature must be positive, got {temperature}")
+
         self.temperature = temperature
         self.kl_div = nn.KLDivLoss(reduction=reduction, log_target=False)
 
@@ -24,8 +28,16 @@ class KLDivLoss(nn.Module):
             raise ValueError(
                 f"Shape mismatch: scores {scores.shape} != labels {labels.shape}"
             )
-        student_log_probs = F.log_softmax(scores / self.temperature, dim=1)
-        loss = self.kl_div(student_log_probs, labels) * (self.temperature**2)
+
+        if not torch.isfinite(scores).all():
+            raise ValueError("scores contains inf or nan")
+
+        if not torch.isfinite(labels).all():
+            raise ValueError("labels contains inf or nan")
+
+        log_probs = F.log_softmax(scores / self.temperature, dim=1)
+        loss = self.kl_div(log_probs, labels) * (self.temperature**2)
+
         return loss
 
 
@@ -239,8 +251,8 @@ class WeightedMarginLossWithLog(nn.Module):
     def __init__(
         self,
         margin: float = 0.5,
-        max_negative_teacher: float = 0.3,
-        min_positive_teacher: float = 0.7,
+        # max_negative_teacher: float = 0.3,
+        # min_positive_teacher: float = 0.7,
         eps: float = 1e-6,
     ):
         super().__init__()
@@ -257,36 +269,50 @@ class WeightedMarginLossWithLog(nn.Module):
         std: 1.26
         """
         self.base_margin = margin
-        self.max_negative_teacher = max_negative_teacher
-        self.min_positive_teacher = min_positive_teacher
+        # self.max_negative_teacher = max_negative_teacher
+        # self.min_positive_teacher = min_positive_teacher
         self.eps = eps
 
     def get_margin(
         self, teacher_pos_scores: torch.Tensor, teacher_neg_scores: torch.Tensor
     ) -> torch.Tensor:
         """
-        positive、negative両方の教師スコアに基づいてマージンを調整
+        各バッチ要素（行）ごとに、positive、negative両方の教師スコアに基づいてマージンを調整
 
         Args:
             teacher_pos_scores: positive例の教師スコア (batch_size, 1)
             teacher_neg_scores: negative例の教師スコア (batch_size, num_negatives)
+        Returns:
+            torch.Tensor: 調整されたマージン (batch_size, num_negatives)
         """
-        # Positiveスコアの正規化 (0.7-1.0 → 0-1)
-        pos_confidence = (teacher_pos_scores - self.min_positive_teacher) / (
-            1.0 - self.min_positive_teacher
+        # 行ごとの統計量を計算
+        neg_mean_per_row = teacher_neg_scores.mean(
+            dim=1, keepdim=True
+        )  # (batch_size, 1)
+        neg_std_per_row = teacher_neg_scores.std(dim=1, keepdim=True)  # (batch_size, 1)
+
+        # 各行でのnegativeスコアの相対的な位置を計算
+        # 平均からどれだけ離れているか（標準偏差単位）
+        neg_relative_scores = (teacher_neg_scores - neg_mean_per_row) / (
+            neg_std_per_row + self.eps
         )
 
-        # Negativeスコアの正規化 (0-0.3 → 0-1)
-        neg_confidence = teacher_neg_scores / self.max_negative_teacher
+        # 行ごとのpositive scoreの相対的な強さ
+        # そのクエリでのpositive例の確信度
+        pos_relative_strength = (teacher_pos_scores - self.min_positive_teacher) / (
+            1.0 - self.min_positive_teacher
+        )  # (batch_size, 1)
 
         # Positiveの確信度が高いほどマージンを大きく (1.0-1.2の範囲)
-        pos_scale = 1.0 + (pos_confidence * 0.2)
+        pos_scale = 1.0 + (pos_relative_strength * 0.2)  # (batch_size, 1)
 
-        # Negativeの確信度が低いほどマージンを大きく (0.9-1.1の範囲)
-        neg_scale = 1.1 - (neg_confidence * 0.2)
+        # Negativeスコアが平均より低いほどマージンを大きく
+        # sigmoidで-2~2σの範囲を0-1にマッピング
+        neg_confidence = torch.sigmoid(neg_relative_scores)
+        neg_scale = 1.1 - (neg_confidence * 0.2)  # (batch_size, num_negatives)
 
         # 両方のスケールを組み合わせる
-        margin_scale = pos_scale * neg_scale
+        margin_scale = pos_scale * neg_scale  # (batch_size, num_negatives)
 
         return self.base_margin * margin_scale
 
