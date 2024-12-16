@@ -43,27 +43,27 @@ class SpladeSubword(Splade):
         device = logits.device
         dtype = logits.dtype  # Ensure consistent dtype
 
-        # マスクを作成して有効なサブワード位置を特定
+        # Create mask to identify valid subword positions
         mask = subword_indices != self.SUBWORD_MASK_ID  # [B, S]
 
-        # 有効な位置のインデックスを取得
+        # Get indices of valid positions
         valid_positions = mask.nonzero(
             as_tuple=False
-        )  # [N, 2] 各行は (batch_idx, seq_idx)
+        )  # [N, 2] each row is (batch_idx, seq_idx)
         if valid_positions.numel() == 0:
             return logits  # No valid subwords to aggregate
 
         batch_indices = valid_positions[:, 0]  # [N]
         seq_indices = valid_positions[:, 1]  # [N]
 
-        # 該当するグループインデックスとトークンIDを抽出
+        # Extract corresponding group indices and token IDs
         group_indices = subword_indices[batch_indices, seq_indices]  # [N]
         token_ids = input_ids[batch_indices, seq_indices]  # [N]
 
-        # 選択されたトークンIDに対応するlogitsを取得
+        # Get logits corresponding to selected token IDs
         selected_logits = logits[batch_indices, token_ids]  # [N]
 
-        # 各バッチごとにグループIDをオフセットしてユニークなグループ識別子を計算
+        # Calculate unique group identifiers by offsetting group IDs for each batch
         max_group_tensor = group_indices.max()
         max_group = (
             max_group_tensor.item()
@@ -73,22 +73,22 @@ class SpladeSubword(Splade):
         if max_group < 0:
             max_group = 0  # Handle case where all group_indices are -100, though unlikely due to mask
 
-        # グループ識別子を一意にするためにバッチオフセットを加算
+        # Add batch offset to make group identifiers unique
         group_offset = batch_indices * (max_group + 1)  # [N]
         unique_group_ids = group_offset + group_indices  # [N]
 
-        # ユニークなグループの数を計算
+        # Calculate number of unique groups
         num_unique_groups = batch_size * (max_group + 1)  # Removed .item()
 
         if self.pooling_type == "max":
-            # -infで初期化し、logitsと同じdtypeを設定
+            # Initialize with -inf and set the same dtype as logits
             pooled_values = torch.full(
                 (num_unique_groups,),  # type: ignore
                 -float("inf"),
                 device=device,
                 dtype=dtype,  # type: ignore
             )
-            # scatter_reduceを使用して各グループの最大値を計算
+            # Calculate maximum value for each group using scatter_reduce
             pooled_values = pooled_values.scatter_reduce(
                 dim=0,
                 index=unique_group_ids,
@@ -97,31 +97,31 @@ class SpladeSubword(Splade):
                 include_self=True,
             )
         elif self.pooling_type == "mean":
-            # 合計とカウントのテンソルを初期化し、logitsと同じdtypeを設定
+            # Initialize sum and count tensors with the same dtype as logits
             sum_pooled = torch.zeros(num_unique_groups, device=device, dtype=dtype)  # type: ignore
             count_pooled = torch.zeros(num_unique_groups, device=device, dtype=dtype)  # type: ignore
-            # 各グループの合計を計算
+            # Calculate sum for each group
             sum_pooled = sum_pooled.scatter_add(0, unique_group_ids, selected_logits)
-            # 各グループのカウントを計算
+            # Calculate count for each group
             count_pooled = count_pooled.scatter_add(
                 0, unique_group_ids, torch.ones_like(selected_logits)
             )
-            # 平均値を計算（ゼロ除算を防ぐ）
+            # Calculate average (prevent division by zero)
             pooled_values = sum_pooled / torch.clamp(count_pooled, min=1)
 
-        # プールされた値を各トークンにマッピング
+        # Map pooled values to each token
         pooled_values_per_token = pooled_values[unique_group_ids]  # [N] # type: ignore
 
-        # バッチ内の複数のトークンを処理するためにグローバルなトークンIDを計算
+        # Calculate global token IDs to handle multiple tokens in batch
         global_token_ids = batch_indices * vocab_size + token_ids  # [N]
 
-        # 各トークンごとの最大プール値を保持するテンソルを初期化（-infで初期化）
+        # Initialize tensor to hold maximum pooled values for each token (initialize with -inf)
         final_pooled = torch.full(
             (batch_size * vocab_size,), -float("inf"), device=device, dtype=dtype
         )
 
         if self.pooling_type == "max":
-            # MaxPoolingの場合は最大値を使用
+            # For MaxPooling, use maximum values
             final_pooled = final_pooled.scatter_reduce(
                 dim=0,
                 index=global_token_ids,
@@ -130,25 +130,25 @@ class SpladeSubword(Splade):
                 include_self=True,
             )
             final_pooled = final_pooled.view(batch_size, vocab_size)
-            # 元のlogitsと最大値を取る
+            # Take maximum between original logits and pooled values
             new_logits = torch.maximum(logits, final_pooled)
         else:  # mean
-            # MeanPoolingの場合は平均値を直接使用
+            # For MeanPooling, use average values directly
             temp_sum = torch.zeros_like(final_pooled)
             temp_count = torch.zeros_like(final_pooled)
 
-            # 値の合計とカウントを集計
+            # Aggregate sum of values and count
             temp_sum.scatter_add_(0, global_token_ids, pooled_values_per_token)
             temp_count.scatter_add_(
                 0, global_token_ids, torch.ones_like(pooled_values_per_token)
             )
 
-            # 最終的な平均を計算
+            # Calculate final average
             final_pooled = (temp_sum / temp_count.clamp(min=1.0)).view(
                 batch_size, vocab_size
             )
 
-            # サブワードがある位置のみ平均値で更新
+            # Update only positions with subwords using average values
             subword_mask = (temp_count > 0).view(batch_size, vocab_size)
             new_logits = torch.where(subword_mask, final_pooled, logits)
 
@@ -176,6 +176,6 @@ class SpladeSubword(Splade):
         if self.pooling_type is not None:
             logits = self._aggregate_subwords(logits, input_ids, subword_indices)
 
-        # クエリとドキュメントの表現を取得
+        # Get query and document representations
         query, docs = self._logit_to_query_docs(logits, batch_size)
         return query, docs

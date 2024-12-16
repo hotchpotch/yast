@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 """
-SPLADE 学習のためのロス実装
+Loss implementations for SPLADE training
 """
 
 
@@ -58,7 +58,7 @@ class WeightedBCELoss(nn.Module):
 
         self.temperature = temperature
         self.scaling_factor = scaling_factor
-        # pos_weightを使ってBCEWithLogitsLossを初期化
+        # Initialize BCEWithLogitsLoss with pos_weight
         self.bce = nn.BCEWithLogitsLoss(
             reduction=reduction, pos_weight=torch.tensor([pos_weight])
         )
@@ -131,10 +131,10 @@ class TeacherGuidedMarginLoss(nn.Module):
     ):
         """
         Args:
-            temperature (float): スコアのスケーリングを制御する温度パラメータ
-            margin (float): positive/negative間の最小マージン
-            soft_ce_weight (float): soft cross entropyロスの重み
-            margin_weight (float): マージンロスの重み
+            temperature (float): Temperature parameter controlling score scaling
+            margin (float): Minimum margin between positive/negative pairs
+            soft_ce_weight (float): Weight for soft cross entropy loss
+            margin_weight (float): Weight for margin loss
         """
         super(TeacherGuidedMarginLoss, self).__init__()
         self.temperature = temperature
@@ -145,20 +145,20 @@ class TeacherGuidedMarginLoss(nn.Module):
     def forward(self, scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            scores (torch.Tensor): 内積値 (batch_size, num_candidates)
-            labels (torch.Tensor): 教師スコア (batch_size, num_candidates)
+            scores (torch.Tensor): Inner product values (batch_size, num_candidates)
+            labels (torch.Tensor): Teacher scores (batch_size, num_candidates)
         Returns:
-            torch.Tensor: スカラー値のロス
+            torch.Tensor: Scalar loss value
         """
         if scores.shape != labels.shape:
             raise ValueError(
                 f"Shape mismatch: scores {scores.shape} != labels {labels.shape}"
             )
 
-        # スコアを温度でスケーリング
+        # Scale scores by temperature
         scaled_scores = scores / self.temperature
 
-        # Soft Cross Entropy Loss (クロスエントロピー)
+        # Soft Cross Entropy Loss
         log_probs = F.log_softmax(scaled_scores, dim=1)
         teacher_probs = F.softmax(labels / self.temperature, dim=1)
         soft_ce_loss = -(teacher_probs * log_probs).sum(dim=1).mean()
@@ -166,7 +166,7 @@ class TeacherGuidedMarginLoss(nn.Module):
         # Weighted Margin Loss
         positives = scores[:, 0].unsqueeze(1)  # (batch_size, 1)
         negatives = scores[:, 1:]  # (batch_size, num_negatives)
-        teacher_weights = labels[:, 1:]  # negativesの教師スコア
+        teacher_weights = labels[:, 1:]  # Teacher scores for negatives
         weighted_margin = self.margin * (
             1.0 - teacher_weights
         )  # (batch_size, num_negatives)
@@ -175,9 +175,9 @@ class TeacherGuidedMarginLoss(nn.Module):
         )  # (batch_size, num_negatives)
         margin_loss = F.relu(margin_diffs).mean()
 
-        # 最終的なロス（重み付き合計）
+        # Final loss (weighted sum)
         loss = self.soft_ce_weight * soft_ce_loss + self.margin_weight * margin_loss
-        # XXX: dict で返せるようにする
+        # TODO: Enable returning as dict
         return loss
 
 
@@ -185,7 +185,7 @@ class SoftCrossEntropyLoss(nn.Module):
     def __init__(self, temperature: float = 1.5):
         """
         Args:
-            temperature (float): スコアのスケーリングを制御する温度パラメータ
+            temperature (float): Temperature parameter controlling score scaling
         """
         super(SoftCrossEntropyLoss, self).__init__()
         self.temperature = temperature
@@ -193,10 +193,10 @@ class SoftCrossEntropyLoss(nn.Module):
     def forward(self, scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            scores (torch.Tensor): 内積値 (batch_size, num_candidates)
-            labels (torch.Tensor): 教師スコア (batch_size, num_candidates)
+            scores (torch.Tensor): Inner product values (batch_size, num_candidates)
+            labels (torch.Tensor): Teacher scores (batch_size, num_candidates)
         Returns:
-            torch.Tensor: スカラー値のロス
+            torch.Tensor: Scalar loss value
         """
         if scores.shape != labels.shape:
             raise ValueError(
@@ -219,9 +219,9 @@ class WeightedMarginLoss(nn.Module):
     ):
         """
         Args:
-            margin (float): positive/negative間の基本マージン
-            max_negative_teacher (float): negative例の教師スコアの最大期待値
-            min_positive_teacher (float): positive例の教師スコアの最小期待値
+            margin (float): Base margin between positive/negative pairs
+            max_negative_teacher (float): Maximum expected value for negative teacher scores
+            min_positive_teacher (float): Minimum expected value for positive teacher scores
         """
         super(WeightedMarginLoss, self).__init__()
         self.base_margin = margin
@@ -230,36 +230,36 @@ class WeightedMarginLoss(nn.Module):
 
     def get_margin(self, teacher_scores: torch.Tensor) -> torch.Tensor:
         """
-        negative例の教師スコアに応じたマージンを計算
-        低いスコアの例（簡単なnegative）ほど大きいマージンを設定
+        Calculate margin based on negative teacher scores
+        Lower scoring examples (easy negatives) get larger margins
 
         Args:
-            teacher_scores: negative例の教師スコア (batch_size, num_negatives)
+            teacher_scores: Teacher scores for negative examples (batch_size, num_negatives)
         Returns:
-            torch.Tensor: マージン値
+            torch.Tensor: Margin values
         """
-        # 教師スコアを[0, max_negative_teacher]の範囲にクリップ
+        # Clip teacher scores to [0, max_negative_teacher] range
         clipped_scores = torch.clamp(teacher_scores, 0.0, self.max_negative_teacher)
 
-        # スコアが低いほどマージンを大きく（0.9-1.1の範囲）
+        # Lower scores get larger margins (range 0.9-1.1)
         margin_scale = 1.1 - (clipped_scores / self.max_negative_teacher) * 0.2
         return self.base_margin * margin_scale
 
     def forward(self, scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            scores (torch.Tensor): 内積値 (batch_size, num_candidates)
-            labels (torch.Tensor): 教師スコア (batch_size, num_candidates)
-                                 最初の列がpositive、残りがnegative
+            scores (torch.Tensor): Inner product values (batch_size, num_candidates)
+            labels (torch.Tensor): Teacher scores (batch_size, num_candidates)
+                                 First column is positive, rest are negative
         Returns:
-            torch.Tensor: スカラー値のロス
+            torch.Tensor: Scalar loss value
         """
         if scores.shape != labels.shape:
             raise ValueError(
                 f"Shape mismatch: scores {scores.shape} != labels {labels.shape}"
             )
 
-        # 教師スコアの範囲チェック（警告を出すだけ）
+        # Check teacher score ranges (warning only)
         negatives_mask = labels[:, 1:] > self.max_negative_teacher
         if torch.any(negatives_mask):
             count = torch.sum(negatives_mask).item()
@@ -276,12 +276,12 @@ class WeightedMarginLoss(nn.Module):
 
         positives = scores[:, 0].unsqueeze(1)  # (batch_size, 1)
         negatives = scores[:, 1:]  # (batch_size, num_negatives)
-        teacher_weights = labels[:, 1:]  # negativesの教師スコア
+        teacher_weights = labels[:, 1:]  # Teacher scores for negatives
 
-        # マージンの計算
+        # Calculate margins
         weighted_margin = self.get_margin(teacher_weights)
 
-        # マージンロスの計算
+        # Calculate margin loss
         margin_diffs = negatives - positives + weighted_margin
         loss = F.relu(margin_diffs).mean()
         return loss
@@ -297,13 +297,13 @@ class WeightedMarginLossWithLog(nn.Module):
     ):
         super().__init__()
         """
-        margin = 0.5  # これは対数空間での差0.35に対して適切
-        positive の内積の統計量は
+        margin = 0.5  # This is appropriate for a log-space difference of 0.35
+        Statistics for positive inner products:
         mean: 10.03 
           log(10.03) = 2.31
         std: 1.566
 
-        negatives の内積の統計量は
+        Statistics for negative inner products:
         mean: 7.11
           log(7.11) = 1.96
         std: 1.26
@@ -317,41 +317,41 @@ class WeightedMarginLossWithLog(nn.Module):
         self, teacher_pos_scores: torch.Tensor, teacher_neg_scores: torch.Tensor
     ) -> torch.Tensor:
         """
-        各バッチ要素（行）ごとに、positive、negative両方の教師スコアに基づいてマージンを調整
+        Adjust margins for each batch element (row) based on both positive and negative teacher scores
 
         Args:
-            teacher_pos_scores: positive例の教師スコア (batch_size, 1)
-            teacher_neg_scores: negative例の教師スコア (batch_size, num_negatives)
+            teacher_pos_scores: Teacher scores for positive examples (batch_size, 1)
+            teacher_neg_scores: Teacher scores for negative examples (batch_size, num_negatives)
         Returns:
-            torch.Tensor: 調整されたマージン (batch_size, num_negatives)
+            torch.Tensor: Adjusted margins (batch_size, num_negatives)
         """
-        # 行ごとの統計量を計算
+        # Calculate statistics for each row
         neg_mean_per_row = teacher_neg_scores.mean(
             dim=1, keepdim=True
         )  # (batch_size, 1)
         neg_std_per_row = teacher_neg_scores.std(dim=1, keepdim=True)  # (batch_size, 1)
 
-        # 各行でのnegativeスコアの相対的な位置を計算
-        # 平均からどれだけ離れているか（標準偏差単位）
+        # Calculate relative position of negative scores in each row
+        # How far from the mean (in standard deviations)
         neg_relative_scores = (teacher_neg_scores - neg_mean_per_row) / (
             neg_std_per_row + self.eps
         )
 
-        # 行ごとのpositive scoreの相対的な強さ
-        # そのクエリでのpositive例の確信度
+        # Relative strength of positive scores per row
+        # Confidence in positive examples for that query
         pos_relative_strength = (teacher_pos_scores - self.min_positive_teacher) / (
             1.0 - self.min_positive_teacher
         )  # (batch_size, 1)
 
-        # Positiveの確信度が高いほどマージンを大きく (1.0-1.2の範囲)
+        # Higher positive confidence leads to larger margins (range 1.0-1.2)
         pos_scale = 1.0 + (pos_relative_strength * 0.2)  # (batch_size, 1)
 
-        # Negativeスコアが平均より低いほどマージンを大きく
-        # sigmoidで-2~2σの範囲を0-1にマッピング
+        # Lower negative scores relative to mean get larger margins
+        # Map -2~2σ range to 0-1 using sigmoid
         neg_confidence = torch.sigmoid(neg_relative_scores)
         neg_scale = 1.1 - (neg_confidence * 0.2)  # (batch_size, num_negatives)
 
-        # 両方のスケールを組み合わせる
+        # Combine both scales
         margin_scale = pos_scale * neg_scale  # (batch_size, num_negatives)
 
         return self.base_margin * margin_scale
@@ -367,11 +367,11 @@ class WeightedMarginLossWithLog(nn.Module):
         positives = log_scores[:, 0].unsqueeze(1)
         negatives = log_scores[:, 1:]
 
-        # 教師スコアを分離
-        teacher_pos = labels[:, 0].unsqueeze(1)  # positiveの教師スコア
-        teacher_neg = labels[:, 1:]  # negativeの教師スコア
+        # Separate teacher scores
+        teacher_pos = labels[:, 0].unsqueeze(1)  # Teacher scores for positives
+        teacher_neg = labels[:, 1:]  # Teacher scores for negatives
 
-        # 両方の教師スコアを使ってマージンを計算
+        # Calculate margins using both teacher scores
         weighted_margin = self.get_margin(teacher_pos, teacher_neg)
 
         margin_diffs = negatives - positives + weighted_margin
