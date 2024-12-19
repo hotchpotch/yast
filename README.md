@@ -8,7 +8,7 @@ This repository is **experimental**, meaning that **breaking changes** may be in
 
 ## Training a Japanese SPLADE Model
 
-See the [Japanese SPLADE example](./examples/japanese-splade-v1/README.md)(日本語で書かれています) for details.
+See the [Japanese SPLADE example](./examples/japanese-splade/README.md)(日本語で書かれています) for details.
 
 ### Related Blog Posts (in Japanese)
 

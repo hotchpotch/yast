@@ -63,6 +63,15 @@ class SpladeTrainer(Trainer):
             )
             self.noise_token_ids = token_ids
 
+        if self.tokenizer:
+            # CLS, SEP, UNK token
+            if self.tokenizer.cls_token_id is not None:
+                self.noise_token_ids.append(self.tokenizer.cls_token_id)
+            if self.tokenizer.sep_token_id is not None:
+                self.noise_token_ids.append(self.tokenizer.sep_token_id)
+            if self.tokenizer.unk_token_id is not None:
+                self.noise_token_ids.append(self.tokenizer.unk_token_id)
+
     def _set_training_losses(self, training_loss: Any) -> None:
         """
         'cross_entropy',  [['loss': 'cross_entropy', 'weight': 1.0], ['loss': 'mse', 'weight': 1.0]]"
@@ -89,7 +98,10 @@ class SpladeTrainer(Trainer):
         elif isinstance(training_loss, dict):
             for loss_name, loss_values in training_loss.items():
                 if loss_klass := losses.get(loss_name):
-                    loss_fn = loss_klass(**loss_values.get("loss_kwargs", {}))
+                    loss_kwargs = loss_values.get("loss_kwargs", {})
+                    if len(loss_kwargs) > 0:
+                        logger.info(f"loss_kwargs for {loss_name}: {loss_kwargs}")
+                    loss_fn = loss_klass(**loss_kwargs)
                     loss_with_args: LossWithWeight = {
                         "loss_fn": loss_fn,
                         "weight": loss_values.get("weight", 1.0),
@@ -132,7 +144,7 @@ class SpladeTrainer(Trainer):
             self.args.sparsity_weight_query, self.warmup_steps_query
         )
 
-    def compute_loss(
+    def compute_loss(  # type: ignore[override]
         self,
         model: Splade,
         inputs: dict[str, torch.Tensor],
@@ -193,6 +205,7 @@ class SpladeTrainer(Trainer):
         self, queries_matrix: torch.Tensor, docs_matrix: torch.Tensor
     ) -> torch.Tensor:
         if self.noise_token_ids and self.args.noise_tokens_weight > 0:
+            # XXX: 毎回GPUに載せているが、本来一回で良い
             noise_token_ids_tensor = torch.tensor(
                 self.noise_token_ids, device=queries_matrix.device
             )

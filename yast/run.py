@@ -9,8 +9,14 @@ import shutil
 import sys
 from pathlib import Path
 
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers import (
+    AutoTokenizer,
+    HfArgumentParser,
+    set_seed,
+)
 from transformers.trainer_utils import get_last_checkpoint
+
+from yast.modeling.splade_subword import SpladeSubword
 
 from .arguments import (
     DataArguments,
@@ -32,6 +38,15 @@ logger = logging.getLogger(__name__)
 def _setup_wandb():
     if "WANDB_PROJECT" not in os.environ:
         os.environ["WANDB_PROJECT"] = "splade"
+
+
+def splade_model_factory(model_args: ModelArguments):
+    if model_args.subword_pooling:
+        logger.info(f"Use subword splade model: {model_args.subword_pooling}")
+        model = SpladeSubword.from_pretrained(model_args, model_args.model_name_or_path)
+    else:
+        model = Splade.from_pretrained(model_args, model_args.model_name_or_path)
+    return model
 
 
 def main():
@@ -84,6 +99,17 @@ def main():
         bool(training_args.local_rank != -1),
         training_args.fp16,
     )
+
+    # override
+    if model_args.subword_pooling and not data_args.create_subword_indices:
+        logging.info("[override]  Set create_subword_indices to True")
+        data_args.create_subword_indices = True
+        if (
+            training_args.noise_tokens is not None
+            and data_args.noise_tokens_for_subword is None
+        ):
+            logger.info("[override] Set noise_tokens_for_subwords")
+            data_args.noise_tokens_for_subword = training_args.noise_tokens
     logger.info("Training/evaluation parameters %s", training_args)
     logger.info("Model parameters %s", model_args)
     logger.info("Data parameters %s", data_args)
@@ -99,10 +125,7 @@ def main():
         use_fast=False,
     )
 
-    model = Splade.from_pretrained(
-        model_args,
-        model_args.model_name_or_path,
-    )
+    model = splade_model_factory(model_args)
 
     train_dataset = create_dateset_from_args(data_args, tokenizer)
     trainer = SpladeTrainer(

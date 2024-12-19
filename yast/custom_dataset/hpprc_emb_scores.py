@@ -198,7 +198,15 @@ class HpprcEmbScoresDataset(DatasetForSpladeTraining):
             score_ds = cast(Dataset, score_ds)
             logger.info(f"Mapping data for subset: {subset}")
             score_ds = score_ds.map(
-                map_data, num_proc=11, remove_columns=score_ds.column_names
+                map_data,
+                num_proc=11,
+                remove_columns=score_ds.column_names,
+                fn_kwargs={
+                    "target_score_keys": target.get(
+                        "target_score_keys",
+                        ["ruri-reranker-large", "bge-reranker-v2-m3"],
+                    )
+                },
             )  # type: ignore
             target_emb_ds[subset] = emb_ds
             aug_factor = target.get("aug_factor", 1.0)

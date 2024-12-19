@@ -33,6 +33,10 @@ class ModelArguments:
             "help": "Pretrained tokenizer name or path if not the same as model_name"
         },
     )
+    subword_pooling: Optional[str] = field(
+        default=None,
+        metadata={"help": "Pooling type for subword, max or mean(default: None)"},
+    )
 
 
 @dataclass
@@ -66,11 +70,37 @@ class SpladeTrainingArguments(TrainingArguments):
             "help": "Document lambda warmup steps. If 0 < value < 1, treated as ratio of total steps. Otherwise, absolute step count."
         },
     )
-    regularizer_query: Literal["mean_squared", "flops", "L1", "L2"] = field(
+    regularizer_query: Literal[
+        "mean_squared",
+        "flops",
+        "L1",
+        "L2",
+        "flops_l1_weighted",
+        "dynamic_sparsity",
+        "magnitude_threshold",
+        "entropy_balanced",
+        "dynamic_sparsity",
+        "grouped_magnitude",
+        "topk_entropy",
+        "adaptive_threshold",
+    ] = field(
         default="L1",
         metadata={},
     )
-    regularizer_doc: Literal["mean_squared", "flops", "L1", "L2"] = field(
+    regularizer_doc: Literal[
+        "mean_squared",
+        "flops",
+        "L1",
+        "L2",
+        "flops_l1_weighted",
+        "dynamic_sparsity",
+        "magnitude_threshold",
+        "entropy_balanced",
+        "dynamic_sparsity",
+        "grouped_magnitude",
+        "topk_entropy",
+        "adaptive_threshold",
+    ] = field(
         default="flops",
         metadata={},
     )
@@ -113,6 +143,10 @@ class SpladeTrainingArguments(TrainingArguments):
         default=1.0,
         metadata={"help": "Noise tokens loss weight"},
     )
+    use_subword: bool = field(
+        default=False,
+        metadata={"help": "Use subword for splade training"},
+    )
 
 
 @dataclass
@@ -136,6 +170,14 @@ class DataArguments:
     )
     dataset_options: dict = field(
         default_factory=dict, metadata={"help": "Additional options for the dataset"}
+    )
+    create_subword_indices: bool = field(
+        default=False,
+        metadata={"help": "Create subword indices for splade model"},
+    )
+    noise_tokens_for_subword: None | str | list[str] = field(
+        default=None,
+        metadata={"help": "Noise tokens for subwords"},
     )
 
     def __post_init__(self):

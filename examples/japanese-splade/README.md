@@ -2,7 +2,9 @@
 
 # 日本語 SPLADE モデルの学習方法
 
-[japanese-splade-base-v1](https://huggingface.co/hotchpotch/japanese-splade-base-v1) 等の学習方法です。
+[japanese-splade-base-v1](https://huggingface.co/hotchpotch/japanese-splade-base-v1) 等の学習方法です。他のバージョン(v2など)の学習用 yaml も同梱されています。
+
+## ライブラリのセットアップ
 
 yast のルートディレクトリで実行します。
 
