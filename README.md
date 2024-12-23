@@ -14,6 +14,8 @@ See the [Japanese SPLADE example](./examples/japanese-splade/README.md)(日本�
 
 - [高性能な日本語SPLADE（スパース検索）モデルを公開しました](https://secon.dev/entry/2024/10/07/100000/)
 - [SPLADE モデルの作り方・日本語SPLADEテクニカルレポート](https://secon.dev/entry/2024/10/23/080000-japanese-splade-tech-report/)
+- [情報検索モデルで最高性能(512トークン以下)・日本語版SPLADE v2をリリース](https://secon.dev/entry/2024/12/19/100000-japanese-splade-v2-release/)
+
 
 ## Related Work
 
