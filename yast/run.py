@@ -43,9 +43,17 @@ def _setup_wandb():
 def splade_model_factory(model_args: ModelArguments):
     if model_args.subword_pooling:
         logger.info(f"Use subword splade model: {model_args.subword_pooling}")
-        model = SpladeSubword.from_pretrained(model_args, model_args.model_name_or_path)
+        model = SpladeSubword.from_pretrained(
+            model_args,
+            model_args.model_name_or_path,
+            trust_remote_code=model_args.trust_remote_code,
+        )
     else:
-        model = Splade.from_pretrained(model_args, model_args.model_name_or_path)
+        model = Splade.from_pretrained(
+            model_args,
+            model_args.model_name_or_path,
+            trust_remote_code=model_args.trust_remote_code,
+        )
     return model
 
 

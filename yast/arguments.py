@@ -37,6 +37,10 @@ class ModelArguments:
         default=None,
         metadata={"help": "Pooling type for subword, max or mean(default: None)"},
     )
+    trust_remote_code: bool = field(
+        default=False,
+        metadata={"help": "Trust remote code for model loading"},
+    )
 
 
 @dataclass
