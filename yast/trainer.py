@@ -252,7 +252,7 @@ class SpladeTrainer(Trainer):
     ) -> torch.Tensor:
         return torch.bmm(queries, docs.transpose(1, 2)).squeeze(1)
 
-    def log(self, logs: dict[str, float]) -> None:
+    def log(self, logs: dict[str, float], start_time=None, **kwargs) -> None:
         logs["step"] = self.state.global_step
         if self.state.epoch is not None:
             logs["epoch"] = round(self.state.epoch, 2)
