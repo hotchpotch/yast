@@ -1,29 +1,30 @@
-# YAST - Yet Another SPLADE or Sparse Trainer
+# YAST - Yet Another SPLADE or Sparse Trainer 🚀
 
-This is an open-source implementation of a SPLADE trainer, designed to work with Huggingface's Trainer API by referencing various SPLADE-related papers. The project is licensed under the permissive MIT License.
+Welcome to YAST! This open-source project provides a powerful and flexible SPLADE (Sparse Lexical and Expansion) trainer. Built to integrate seamlessly with Huggingface's Trainer API, YAST allows you to leverage cutting-edge sparse retrieval techniques based on various SPLADE-related research papers. Our goal is to offer an accessible tool for training these models. YAST is licensed under the permissive MIT License.
 
-## Important Notice
+## ⚠️ Important Notice
 
-This repository is **experimental**, meaning that **breaking changes** may be introduced frequently. When using this project, it is recommended to **fork** the repository and work with a specific **revision** to ensure stability.
+Please note that YAST is currently an **experimental** project. This means you might encounter **breaking changes** introduced from time to time. To ensure a stable experience, we highly recommend **forking** this repository and working with a specific **revision (commit hash)**.
 
 ## Training a Japanese SPLADE Model
 
-See the [Japanese SPLADE example](./examples/japanese-splade/README.md)(日本語で書かれています) for details.
+For details on training a Japanese SPLADE model, please see the [Japanese SPLADE example](./examples/japanese-splade/README.md). This document is written in Japanese (日本語で書かれています). If you don't read Japanese, online translation tools can be helpful for understanding the content.
 
-### Related Blog Posts (in Japanese)
+### Related Blog Posts (Content in Japanese)
 
+Here are some blog posts related to this project, written in Japanese:
 - [高性能な日本語SPLADE（スパース検索）モデルを公開しました](https://secon.dev/entry/2024/10/07/100000/)
 - [SPLADE モデルの作り方・日本語SPLADEテクニカルレポート](https://secon.dev/entry/2024/10/23/080000-japanese-splade-tech-report/)
 - [情報検索モデルで最高性能(512トークン以下)・日本語版SPLADE v2をリリース](https://secon.dev/entry/2024/12/19/100000-japanese-splade-v2-release/)
 
 
-## Related Work
+## 💡 Related Work
 
-We also provide another project, [YASEM (Yet Another Splade | Sparse Embedder)](https://github.com/hotchpotch/yasem), which offers a more user-friendly implementation for working with SPLADE models.
+Another project, [YASEM (Yet Another Splade | Sparse Embedder)](https://github.com/hotchpotch/yasem), offers a more user-friendly implementation for working with SPLADE models.
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
-We would like to express our gratitude to the researchers behind the original SPLADE papers for their outstanding contributions to this field.
+We thank the researchers behind the original SPLADE papers for their outstanding contributions to this field.
 
 ## References
 
