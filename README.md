@@ -6,6 +6,44 @@ Welcome to YAST! This open-source project provides a powerful and flexible SPLAD
 
 Please note that YAST is currently an **experimental** project. This means you might encounter **breaking changes** introduced from time to time. To ensure a stable experience, we highly recommend **forking** this repository and working with a specific **revision (commit hash)**.
 
+## Development Setup
+
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management and requires Python 3.11.
+
+### Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
+
+### Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/hotchpotch/yast.git
+cd yast
+
+# Create virtual environment and install dependencies
+uv venv --python 3.11 .venv
+uv sync --extra dev
+
+# Activate virtual environment (optional - you can use uv run instead)
+source .venv/bin/activate
+
+# Run training example
+uv run python -m yast.run examples/japanese-splade/toy.yaml
+```
+
+### Optional: Flash Attention 2 for Performance
+
+For improved training speed, you can install Flash Attention 2:
+
+```bash
+# Install Flash Attention 2 (optional, for performance optimization)
+uv pip install --no-deps flash-attn --no-build-isolation
+```
+
+**Note**: Flash Attention 2 requires a compatible CUDA GPU and may take some time to compile.
+
 ## Training a Japanese SPLADE Model
 
 For details on training a Japanese SPLADE model, please see the [Japanese SPLADE example](./examples/japanese-splade/README.md). This document is written in Japanese (日本語で書かれています). If you don't read Japanese, online translation tools can be helpful for understanding the content.
