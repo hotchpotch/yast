@@ -35,14 +35,14 @@ uv run python -m yast.run examples/japanese-splade/toy.yaml
 
 ### Optional: Flash Attention 2 for Performance
 
-For improved training speed, you can install Flash Attention 2:
+For improved training speed, install Flash Attention 2:
 
 ```bash
-# Install Flash Attention 2 (optional, for performance optimization)
 uv pip install --no-deps flash-attn --no-build-isolation
+uv pip install einops
 ```
 
-**Note**: Flash Attention 2 requires a compatible CUDA GPU and may take some time to compile.
+**Note**: Requires a compatible CUDA GPU and may take time to compile.
 
 ## Training a Japanese SPLADE Model
 
